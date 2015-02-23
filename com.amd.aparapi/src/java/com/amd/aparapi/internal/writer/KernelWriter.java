@@ -648,7 +648,7 @@ public abstract class KernelWriter extends BlockWriter{
       newLine();
       {
          write("out[i] = " + _entryPoint.getMethodModel().getName() +
-             "(this, x[i]);");
+             "(this, v[i]);");
       }
       out();
       newLine();
