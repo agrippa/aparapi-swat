@@ -75,6 +75,8 @@ import com.amd.aparapi.internal.util.UnsafeWrapper;
 import com.amd.aparapi.internal.writer.KernelWriter;
 import com.amd.aparapi.opencl.OpenCL;
 
+import com.amd.aparapi.internal.writer.BlockWriter;
+
 /**
  * The class is responsible for executing <code>Kernel</code> implementations. <br/>
  * 
@@ -1128,7 +1130,7 @@ public class KernelRunner extends KernelRunnerJNI{
 
                   String openCL = null;
                   try {
-                     openCL = KernelWriter.writeToString(entryPoint);
+                     openCL = KernelWriter.writeToString(entryPoint, new java.util.LinkedList<BlockWriter.ScalaParameter>());
                   } catch (final CodeGenException codeGenException) {
                      return warnFallBackAndExecute(_entrypointName, _range, _passes, codeGenException);
                   }

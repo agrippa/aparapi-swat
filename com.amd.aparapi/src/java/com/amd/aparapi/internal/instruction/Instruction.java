@@ -67,7 +67,7 @@ public abstract class Instruction{
 
    protected int pc;
 
-   abstract String getDescription();
+   public abstract String getDescription();
 
    private Instruction nextPC = null;
 

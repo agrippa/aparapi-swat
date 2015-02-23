@@ -149,7 +149,7 @@ public class InstructionHelper{
          return (sw.toString());
       }
 
-      @Override public void write(Entrypoint entryPoint) {
+      @Override public void write(Entrypoint entryPoint, java.util.Collection<ScalaParameter> params) {
          // TODO Auto-generated method stub
       }
 

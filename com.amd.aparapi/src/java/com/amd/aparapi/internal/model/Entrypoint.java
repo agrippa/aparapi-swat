@@ -538,7 +538,9 @@ public class Entrypoint implements Cloneable {
                }
             }
 
+            System.err.println("Method " + methodModel.getName());
             for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction = instruction.getNextPC()) {
+               System.err.println("  [" + instruction.toString() + "] " + instruction.getDescription());
 
                if (instruction instanceof AssignToArrayElement) {
                   final AssignToArrayElement assignment = (AssignToArrayElement) instruction;

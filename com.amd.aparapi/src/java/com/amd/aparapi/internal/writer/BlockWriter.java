@@ -799,5 +799,21 @@ public abstract class BlockWriter{
       }
    }
 
-   public abstract void write(Entrypoint entryPoint) throws CodeGenException;
+   public static class ScalaParameter {
+       public static enum DIRECTION {
+         IN, OUT
+       }
+
+       public final String type;
+       public final String name;
+       public final DIRECTION dir;
+
+       public ScalaParameter(String type, String name, DIRECTION dir) {
+         this.type = type;
+         this.name = name;
+         this.dir = dir;
+       }
+   }
+
+   public abstract void write(Entrypoint entryPoint, Collection<ScalaParameter> params) throws CodeGenException;
 }

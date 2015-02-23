@@ -280,7 +280,8 @@ public abstract class KernelWriter extends BlockWriter{
    public final static String CONSTANT_ANNOTATION_NAME = "L" + com.amd.aparapi.Kernel.Constant.class.getName().replace('.', '/')
          + ";";
 
-   @Override public void write(Entrypoint _entryPoint) throws CodeGenException {
+   @Override public void write(Entrypoint _entryPoint,
+         Collection<ScalaParameter> params) throws CodeGenException {
       final List<String> thisStruct = new ArrayList<String>();
       final List<String> argLines = new ArrayList<String>();
       final List<String> assigns = new ArrayList<String>();
@@ -534,25 +535,15 @@ public abstract class KernelWriter extends BlockWriter{
          write(line);
          writeln(";");
       }
-      write("int passid");
       out();
-      writeln(";");
-      // out();
-      // newLine();
       write("}This;");
       newLine();
-      write("int get_pass_id(This *this){");
-      in();
-      {
-         newLine();
-         write("return this->passid;");
-         out();
-         newLine();
-      }
-      write("}");
-      newLine();
 
-      for (final MethodModel mm : _entryPoint.getCalledMethods()) {
+      final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
+      merged.addAll(_entryPoint.getCalledMethods());
+      merged.add(_entryPoint.getMethodModel());
+
+      for (final MethodModel mm : merged) {
          // write declaration :)
          if (mm.isPrivateMemoryGetter()) {
             continue;
@@ -611,48 +602,100 @@ public abstract class KernelWriter extends BlockWriter{
          newLine();
       }
 
-      write("__kernel void " + _entryPoint.getMethodModel().getSimpleName() + "(");
+      write("__kernel void run(");
+      in(); in();
+      newLine();
+      {
+         boolean first = true;
+         boolean foundOut = false;
+         for (ScalaParameter p : params) {
+            if (first) {
+               first = false;
+            } else {
+               write(", ");
+               newLine();
+            }
 
-      in();
-      boolean first = true;
-      for (final String line : argLines) {
-
-         if (first) {
-            first = false;
-         } else {
-            write(", ");
+            write(p.type + " " + p.name);
+            if (p.dir == ScalaParameter.DIRECTION.OUT) {
+               assert(!foundOut);
+               foundOut = true;
+            }
          }
 
-         newLine();
-         write(line);
-      }
+         for (final String line : argLines) {
+           write(", "); write(line);
+         }
 
-      if (first) {
-         first = false;
-      } else {
-         write(", ");
+         write(", int N");
       }
-      newLine();
-      write("int passid");
+      write(") {");
       out();
       newLine();
-      write("){");
-      in();
-      newLine();
+
+      writeln("int i = get_global_id(0);");
+      writeln("int nthreads = get_global_size(0);");
+
       writeln("This thisStruct;");
       writeln("This* this=&thisStruct;");
       for (final String line : assigns) {
          write(line);
          writeln(";");
       }
-      write("this->passid = passid");
-      writeln(";");
 
-      writeMethodBody(_entryPoint.getMethodModel());
+      write("for (; i < N; i += nthreads) {");
+      in();
+      newLine();
+      {
+         write("out[i] = " + _entryPoint.getMethodModel().getName() +
+             "(this, x[i]);");
+      }
+      out();
+      newLine();
+      write("}");
+
       out();
       newLine();
       writeln("}");
-      out();
+
+      // final String returnTypeName;
+      // if (_entryPoint.getMethodModel().getReturnType().equals("I")) {
+      //   returnTypeName = "int";
+      // } else {
+      //   throw new RuntimeException("Unsupported entry point return type \"" +
+      //       _entryPoint.getMethodModel() + "\"");
+      // }
+
+      // write(returnTypeName + " " +
+      //     _entryPoint.getMethodModel().getSimpleName() + "(");
+
+      // in();
+
+      // write("int x");
+
+      // for (final String line : argLines) {
+      //    write(", ");
+      //    newLine();
+      //    write(line);
+      // }
+
+      // newLine();
+      // out();
+      // write("){");
+      // in();
+      // newLine();
+      // writeln("This thisStruct;");
+      // writeln("This* this=&thisStruct;");
+      // for (final String line : assigns) {
+      //    write(line);
+      //    writeln(";");
+      // }
+
+      // writeMethodBody(_entryPoint.getMethodModel());
+      // out();
+      // newLine();
+      // writeln("}");
+      // out();
    }
 
    @Override public void writeThisRef() {
@@ -694,7 +737,8 @@ public abstract class KernelWriter extends BlockWriter{
       }
    }
 
-   public static String writeToString(Entrypoint _entrypoint) throws CodeGenException {
+   public static String writeToString(Entrypoint _entrypoint,
+         Collection<ScalaParameter> params) throws CodeGenException {
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){
          @Override public void write(String _string) {
@@ -702,7 +746,7 @@ public abstract class KernelWriter extends BlockWriter{
          }
       };
       try {
-         openCLWriter.write(_entrypoint);
+         openCLWriter.write(_entrypoint, params);
       } catch (final CodeGenException codeGenException) {
          throw codeGenException;
       }/* catch (final Throwable t) {

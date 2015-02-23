@@ -2801,7 +2801,7 @@ public class ClassModel{
             }
          });
 
-   Entrypoint getEntrypoint(String _entrypointName, String _descriptor, Object _k) throws AparapiException {
+   public Entrypoint getEntrypoint(String _entrypointName, String _descriptor, Object _k) throws AparapiException {
       if (CacheEnabler.areCachesEnabled()) {
          EntrypointKey key = EntrypointKey.of(_entrypointName, _descriptor);
          Entrypoint entrypointWithoutKernel = entrypointCache.computeIfAbsent(key);
