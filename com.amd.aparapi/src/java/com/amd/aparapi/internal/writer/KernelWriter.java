@@ -616,7 +616,7 @@ public abstract class KernelWriter extends BlockWriter{
                newLine();
             }
 
-            write(p.type + " " + p.name);
+            write("__global " + p.type + " " + p.name);
             if (p.dir == ScalaParameter.DIRECTION.OUT) {
                assert(!foundOut);
                foundOut = true;
