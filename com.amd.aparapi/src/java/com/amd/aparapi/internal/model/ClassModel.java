@@ -2682,6 +2682,28 @@ public class ClassModel{
       return superClazz.getField(_name);
    }
 
+   public ClassModelMethod getPrimitiveApplyMethod() {
+       ClassModelMethod result = null;
+       for (ClassModelMethod method : methods) {
+           String name = method.getName();
+           String descriptor = method.getDescriptor();
+           String returnType = descriptor.substring(descriptor.lastIndexOf(')') + 1);
+
+           if (name.equals("apply") && !returnType.startsWith("L")) {
+              if (result != null) {
+                  // We expect only one match per Function in Scala
+                  throw new RuntimeException("Multiple matches");
+              }
+              result = method;
+           }
+       }
+       return result;
+   }
+
+   public Iterator<ClassModelMethod> methodIter() {
+      return methods.iterator();
+   }
+
    public ClassModelMethod getMethod(String _name, String _descriptor) {
       ClassModelMethod methodOrNull = getMethodOrNull(_name, _descriptor);
       if (methodOrNull == null)

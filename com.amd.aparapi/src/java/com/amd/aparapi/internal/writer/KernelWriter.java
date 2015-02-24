@@ -602,12 +602,12 @@ public abstract class KernelWriter extends BlockWriter{
          newLine();
       }
 
+      ScalaParameter outParam = null;
       write("__kernel void run(");
       in(); in();
       newLine();
       {
          boolean first = true;
-         boolean foundOut = false;
          for (ScalaParameter p : params) {
             if (first) {
                first = false;
@@ -618,8 +618,8 @@ public abstract class KernelWriter extends BlockWriter{
 
             write("__global " + p.type + " " + p.name);
             if (p.dir == ScalaParameter.DIRECTION.OUT) {
-               assert(!foundOut);
-               foundOut = true;
+               assert(outParam == null);
+               outParam = p;
             }
          }
 
@@ -632,6 +632,7 @@ public abstract class KernelWriter extends BlockWriter{
       write(") {");
       out();
       newLine();
+      assert(outParam != null);
 
       writeln("int i = get_global_id(0);");
       writeln("int nthreads = get_global_size(0);");
@@ -647,8 +648,13 @@ public abstract class KernelWriter extends BlockWriter{
       in();
       newLine();
       {
-         write("out[i] = " + _entryPoint.getMethodModel().getName() +
-             "(this, v[i]);");
+         write(outParam.name + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
+         for (ScalaParameter p : params) {
+           if (p.dir == ScalaParameter.DIRECTION.IN) {
+             write(", " + p.name + "[i]");
+           }
+         }
+         write(");");
       }
       out();
       newLine();

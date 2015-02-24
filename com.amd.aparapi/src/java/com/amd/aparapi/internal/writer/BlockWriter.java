@@ -813,6 +813,11 @@ public abstract class BlockWriter{
          this.name = name;
          this.dir = dir;
        }
+
+       @Override
+       public String toString() {
+          return "[" + type + " " + name + "]";
+       }
    }
 
    public abstract void write(Entrypoint entryPoint, Collection<ScalaParameter> params) throws CodeGenException;
