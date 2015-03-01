@@ -618,9 +618,9 @@ public class Entrypoint implements Cloneable {
                      if (arrayFieldModel != null) {
                         final Class<?> memberClass = arrayFieldModel.getClassWeAreModelling();
                         final int modifiers = memberClass.getModifiers();
-                        if (!Modifier.isFinal(modifiers)) {
-                           throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTNONFINAL);
-                        }
+                        // if (!Modifier.isFinal(modifiers)) {
+                        //    throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTNONFINAL);
+                        // }
 
                         final ClassModel refModel = objectArrayFieldsClasses.get(className);
                         if (refModel == null) {
