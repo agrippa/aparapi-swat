@@ -46,6 +46,8 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodReferenceEntry.*;
 import com.amd.aparapi.internal.util.*;
 
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
+
 import java.lang.reflect.*;
 import java.util.*;
 import java.util.logging.*;
@@ -72,6 +74,12 @@ public class Entrypoint implements Cloneable {
 
    // Classes of object array members
    private final HashMap<String, ClassModel> objectArrayFieldsClasses = new HashMap<String, ClassModel>();
+
+   public void addClass(String name) throws AparapiException {
+     final ClassModel model = getOrUpdateAllClassAccesses(name);
+     objectArrayFieldsClasses.put(name, model);
+     allFieldsClasses.put(name, model);
+   }
 
    // Supporting classes of object array members like supers
    private final HashMap<String, ClassModel> allFieldsClasses = new HashMap<String, ClassModel>();
@@ -183,7 +191,7 @@ public class Entrypoint implements Cloneable {
       }
 
       // Find better way to do this check
-      while (!mySuper.getName().equals(Kernel.class.getName())) {
+      while (mySuper != null && !mySuper.getName().equals(Kernel.class.getName())) {
          try {
             field = mySuper.getDeclaredField(_name);
             final int modifiers = field.getModifiers();
@@ -206,7 +214,6 @@ public class Entrypoint implements Cloneable {
                logger.fine("no " + _name + " in " + mySuper.getName());
             }
             mySuper = mySuper.getSuperclass();
-            assert mySuper != null : "mySuper is null!";
          }
       }
       return null;
@@ -436,10 +443,19 @@ public class Entrypoint implements Cloneable {
       return m;
    }
 
-   public Entrypoint(ClassModel _classModel, MethodModel _methodModel, Object _k) throws AparapiException {
+   public Entrypoint(ClassModel _classModel, MethodModel _methodModel, Object _k, Collection<ScalaParameter> params) throws AparapiException {
       classModel = _classModel;
       methodModel = _methodModel;
       kernelInstance = _k;
+
+      if (params != null) {
+        for (ScalaParameter p : params) {
+          System.out.println(p.toString());
+          if (p.clazz != null) {
+            addClass(p.clazz.getName());
+          }
+        }
+      }
 
       final Map<ClassModelMethod, MethodModel> methodMap = new LinkedHashMap<ClassModelMethod, MethodModel>();
 
@@ -538,9 +554,9 @@ public class Entrypoint implements Cloneable {
                }
             }
 
-            System.err.println("Method " + methodModel.getName());
+            // System.err.println("Method " + methodModel.getName());
             for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction = instruction.getNextPC()) {
-               System.err.println("  [" + instruction.toString() + "] " + instruction.getDescription());
+               // System.err.println("  [" + instruction.toString() + "] " + instruction.getDescription());
 
                if (instruction instanceof AssignToArrayElement) {
                   final AssignToArrayElement assignment = (AssignToArrayElement) instruction;
@@ -887,6 +903,7 @@ public class Entrypoint implements Cloneable {
                if (logger.isLoggable(Level.FINE)) {
                   logger.fine("selected from called methods = " + m.getName());
                }
+
                return m;
             }
          }

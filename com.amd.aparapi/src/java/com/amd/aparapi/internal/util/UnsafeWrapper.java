@@ -68,6 +68,8 @@ public class UnsafeWrapper{
 
    private static Method getFloatMethod;
 
+   private static Method getDoubleMethod;
+
    private static Method getByteMethod;
 
    private static Method getBooleanMethod;
@@ -103,6 +105,7 @@ public class UnsafeWrapper{
          getObjectMethod = uc.getDeclaredMethod("getObject", Object.class, long.class);
          getIntMethod = uc.getDeclaredMethod("getInt", Object.class, long.class);
          getFloatMethod = uc.getDeclaredMethod("getFloat", Object.class, long.class);
+         getDoubleMethod = uc.getDeclaredMethod("getDouble", Object.class, long.class);
          getByteMethod = uc.getDeclaredMethod("getByte", Object.class, long.class);
          getBooleanMethod = uc.getDeclaredMethod("getBoolean", Object.class, long.class);
          getLongMethod = uc.getDeclaredMethod("getLong", Object.class, long.class);
@@ -223,6 +226,23 @@ public class UnsafeWrapper{
       int value = 0;
       try {
          value = (Integer) getIntMethod.invoke(unsafe, _object, _offset);
+      } catch (final IllegalArgumentException e) {
+         // TODO Auto-generated catch block
+         e.printStackTrace();
+      } catch (final IllegalAccessException e) {
+         // TODO Auto-generated catch block
+         e.printStackTrace();
+      } catch (final InvocationTargetException e) {
+         // TODO Auto-generated catch block
+         e.printStackTrace();
+      }
+      return value;
+   }
+
+   public static double getDouble(Object _object, long _offset) {
+      Double value = 0.0;
+      try {
+         value = (Double) getDoubleMethod.invoke(unsafe, _object, _offset);
       } catch (final IllegalArgumentException e) {
          // TODO Auto-generated catch block
          e.printStackTrace();

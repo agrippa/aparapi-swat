@@ -1130,9 +1130,11 @@ public class KernelRunner extends KernelRunnerJNI{
 
                   String openCL = null;
                   try {
-                     openCL = KernelWriter.writeToString(entryPoint, new java.util.LinkedList<BlockWriter.ScalaParameter>());
+                     openCL = KernelWriter.writeToString(entryPoint, new java.util.LinkedList<BlockWriter.ScalaParameter>()).kernel;
                   } catch (final CodeGenException codeGenException) {
                      return warnFallBackAndExecute(_entrypointName, _range, _passes, codeGenException);
+                  } catch (final AparapiException e) {
+                     throw new RuntimeException(e);
                   }
 
                   if (Config.enableShowGeneratedOpenCL) {

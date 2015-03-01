@@ -429,7 +429,6 @@ public class MethodModel{
          }
 
          _expressionList.add(new CloneInstruction(this, e));
-         System.out.println("clone of " + e);
       } else if (_instruction instanceof I_DUP2) {
          Instruction e = _expressionList.getTail();
          while (!e.producesStack()) {
@@ -1289,7 +1288,7 @@ public class MethodModel{
    /**
     * Determine if this method is a getter and record the accessed field if so
     */
-   void checkForGetter(Map<Integer, Instruction> pcMap) throws ClassParseException {
+   void checkForGetter(Map<Integer, Instruction> pcMap, ClassModel owner) throws ClassParseException {
       final String methodName = getMethod().getName();
       String rawVarNameCandidate = null;
       boolean mightBeGetter = true;
@@ -1298,6 +1297,8 @@ public class MethodModel{
          rawVarNameCandidate = methodName.substring(3);
       } else if (methodName.startsWith("is")) {
          rawVarNameCandidate = methodName.substring(2);
+      } else if (owner.getField(methodName) != null) {
+         rawVarNameCandidate = methodName;
       } else {
          mightBeGetter = false;
       }
@@ -1305,6 +1306,7 @@ public class MethodModel{
       // Getters should have 3 bcs: aload_0, getfield, ?return
       if (mightBeGetter) {
          boolean possiblySimpleGetImplementation = pcMap.size() == 3;
+
          if ((rawVarNameCandidate != null) && (isNoCL() || possiblySimpleGetImplementation)) {
             final String firstLetter = rawVarNameCandidate.substring(0, 1).toLowerCase();
             final String varNameCandidateCamelCased = rawVarNameCandidate.replaceFirst(rawVarNameCandidate.substring(0, 1), firstLetter);
@@ -1329,7 +1331,7 @@ public class MethodModel{
                         assert (fieldType.length() == 1) && (returnType.length() == 1) : " can only use basic type getters";
 
                         // Allow isFoo style for boolean fields
-                        if ((methodName.startsWith("is") && fieldType.equals("Z")) || (methodName.startsWith("get"))) {
+                        if ((methodName.startsWith("is") && fieldType.equals("Z")) || (methodName.startsWith("get")) || methodName.equals(accessedFieldName)) {
                            if (fieldType.equals(returnType)) {
                               if (logger.isLoggable(Level.FINE)) {
                                  logger.fine("Found " + methodName + " as a getter for " + varNameCandidateCamelCased.toLowerCase());
@@ -1651,7 +1653,7 @@ public class MethodModel{
             if (logger.isLoggable(Level.FINE)) {
                logger.fine("Considering accessor call: " + getName());
             }
-            checkForGetter(pcMap);
+            checkForGetter(pcMap, owner);
             checkForSetter(pcMap);
          }
 

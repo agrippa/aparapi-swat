@@ -806,17 +806,20 @@ public abstract class BlockWriter{
 
        public final String type;
        public final String name;
+       public final Class<?> clazz;
        public final DIRECTION dir;
 
-       public ScalaParameter(String type, String name, DIRECTION dir) {
+       public ScalaParameter(String type,Class<?> clazz, String name,
+           DIRECTION dir) {
          this.type = type;
+         this.clazz = clazz;
          this.name = name;
          this.dir = dir;
        }
 
        @Override
        public String toString() {
-          return "[" + type + " " + name + "]";
+          return "[" + type + " " + name + ", clazz=" + clazz + "]";
        }
    }
 

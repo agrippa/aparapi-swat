@@ -195,11 +195,25 @@ public abstract class KernelWriter extends BlockWriter{
          if (m != null && m.isGetter()) {
             getterField = m.getAccessorVariableFieldEntry();
          }
-         if (getterField != null && isThis(_methodCall.getArg(0))) {
-            String fieldName = getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-            write("this->");
-            write(fieldName);
-            return;
+
+         if (getterField != null) {
+           if (isThis(_methodCall.getArg(0))) {
+             String fieldName = getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+             write("this->");
+             write(fieldName);
+             return;
+           } else if (_methodCall instanceof VirtualMethodCall) {
+             VirtualMethodCall virt = (VirtualMethodCall) _methodCall;
+             if (virt.getInstanceReference() instanceof LocalVariableConstIndexLoad) {
+               LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)virt.getInstanceReference();
+               LocalVariableInfo info = ld.getLocalVariableInfo();
+               if (!info.isArray()) {
+                 String fieldName = getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                 write(info.getVariableName() + "." + fieldName);
+                 return;
+               }
+             }
+           }
          }
          boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
                .contains(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
@@ -743,8 +757,26 @@ public abstract class KernelWriter extends BlockWriter{
       }
    }
 
-   public static String writeToString(Entrypoint _entrypoint,
-         Collection<ScalaParameter> params) throws CodeGenException {
+   public static class WriterAndKernel {
+     public final KernelWriter writer;
+     public final String kernel;
+
+     public WriterAndKernel(KernelWriter writer, String kernel) {
+       this.writer = writer;
+       this.kernel = kernel;
+     }
+   }
+
+   public static WriterAndKernel writeToString(Entrypoint _entrypoint,
+         Collection<ScalaParameter> params) throws CodeGenException, AparapiException {
+
+      // for (ScalaParameter p : params) {
+      //   System.out.println(p.toString());
+      //   if (p.clazz != null) {
+      //     _entrypoint.addClass(p.clazz.getName());
+      //   }
+      // }
+
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){
          @Override public void write(String _string) {
@@ -759,6 +791,6 @@ public abstract class KernelWriter extends BlockWriter{
          throw new CodeGenException(t);
        }*/
 
-      return (openCLStringBuilder.toString());
+      return (new WriterAndKernel(openCLWriter, openCLStringBuilder.toString()));
    }
 }

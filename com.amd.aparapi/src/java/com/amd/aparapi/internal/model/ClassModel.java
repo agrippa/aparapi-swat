@@ -46,6 +46,8 @@ import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.reader.*;
 
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
+
 import java.io.*;
 import java.lang.reflect.*;
 import java.util.*;
@@ -161,6 +163,7 @@ public class ClassModel{
 
    private ClassModel(Class<?> _class) throws ClassParseException {
 
+      System.out.println("Constructing class model for " + _class.getName());
       parse(_class);
 
       final Class<?> mySuper = _class.getSuperclass();
@@ -2823,20 +2826,20 @@ public class ClassModel{
             }
          });
 
-   public Entrypoint getEntrypoint(String _entrypointName, String _descriptor, Object _k) throws AparapiException {
+   public Entrypoint getEntrypoint(String _entrypointName, String _descriptor, Object _k, Collection<ScalaParameter> params) throws AparapiException {
       if (CacheEnabler.areCachesEnabled()) {
-         EntrypointKey key = EntrypointKey.of(_entrypointName, _descriptor);
+         EntrypointKey key = EntrypointKey.of(_entrypointName, _descriptor, params);
          Entrypoint entrypointWithoutKernel = entrypointCache.computeIfAbsent(key);
          return entrypointWithoutKernel.cloneForKernel(_k);
       } else {
          final MethodModel method = getMethodModel(_entrypointName, _descriptor);
-         return new Entrypoint(this, method, _k);
+         return new Entrypoint(this, method, _k, params);
       }
    }
 
    Entrypoint computeBasicEntrypoint(EntrypointKey entrypointKey) throws AparapiException {
       final MethodModel method = getMethodModel(entrypointKey.getEntrypointName(), entrypointKey.getDescriptor());
-      return new Entrypoint(this, method, null);
+      return new Entrypoint(this, method, null, entrypointKey.getParams());
    }
 
    public Class<?> getClassWeAreModelling() {
@@ -2844,11 +2847,11 @@ public class ClassModel{
    }
 
    public Entrypoint getEntrypoint(String _entrypointName, Object _k) throws AparapiException {
-      return (getEntrypoint(_entrypointName, "()V", _k));
+      return (getEntrypoint(_entrypointName, "()V", _k, null));
    }
 
    public Entrypoint getEntrypoint() throws AparapiException {
-      return (getEntrypoint("run", "()V", null));
+      return (getEntrypoint("run", "()V", null, null));
    }
 
    public static void invalidateCaches() {
