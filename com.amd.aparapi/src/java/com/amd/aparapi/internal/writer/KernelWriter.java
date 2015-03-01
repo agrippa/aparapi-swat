@@ -770,13 +770,6 @@ public abstract class KernelWriter extends BlockWriter{
    public static WriterAndKernel writeToString(Entrypoint _entrypoint,
          Collection<ScalaParameter> params) throws CodeGenException, AparapiException {
 
-      // for (ScalaParameter p : params) {
-      //   System.out.println(p.toString());
-      //   if (p.clazz != null) {
-      //     _entrypoint.addClass(p.clazz.getName());
-      //   }
-      // }
-
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){
          @Override public void write(String _string) {

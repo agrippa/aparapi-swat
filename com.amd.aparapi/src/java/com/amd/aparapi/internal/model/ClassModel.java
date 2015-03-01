@@ -163,7 +163,6 @@ public class ClassModel{
 
    private ClassModel(Class<?> _class) throws ClassParseException {
 
-      System.out.println("Constructing class model for " + _class.getName());
       parse(_class);
 
       final Class<?> mySuper = _class.getSuperclass();
