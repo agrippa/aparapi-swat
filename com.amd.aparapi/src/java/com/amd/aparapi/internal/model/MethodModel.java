@@ -64,6 +64,8 @@ public class MethodModel{
    */
    private boolean usesDoubles;
 
+   private boolean usesNew;
+
    /**
       True is an indication to use the byte addressable store pragma
    */
@@ -164,10 +166,18 @@ public class MethodModel{
             logger.fine("Found Byte Addressable Store on =" + instruction + " in " + getName());
          }
       }
+
+      if (instruction instanceof New) {
+        usesNew = true;
+      }
    }
 
    public boolean requiresDoublePragma() {
       return usesDoubles;
+   }
+
+   public boolean requiresHeap() {
+     return usesNew;
    }
 
    public boolean requiresByteAddressableStorePragma() {
@@ -582,7 +592,20 @@ public class MethodModel{
    }
 
    InstructionTransformer[] transformers = new InstructionTransformer[] {
-
+         new InstructionTransformer("constructor merger") {
+           @Override public Instruction transform(final ExpressionList _expressionList, final Instruction i) {
+             if (i instanceof I_INVOKESPECIAL) {
+               Instruction newi = i.getPrevExpr();
+               if (newi instanceof New) {
+                 ConstructorCall call = new ConstructorCall(MethodModel.this,
+                     (I_INVOKESPECIAL)i, (New)newi);
+                 _expressionList.replaceInclusive(newi, i, call);
+                 return (call);
+               }
+             }
+             return null;
+           }
+         },
          new InstructionTransformer("long hand post increment of field"){
 
             /**
@@ -1228,7 +1251,9 @@ public class MethodModel{
       if (logger.isLoggable(Level.FINE)) {
 
          System.out.println("We are looking at " + _instruction + " which wants to consume " + _instruction.getStackConsumeCount()
-               + " operands");
+               + " operands, produces stack? " + _operandStart.producesStack() + ", is assign to local? " +
+               (_instruction instanceof AssignToLocalVariable) + ", next is assign to local? " +
+               (_operandStart.getNextExpr() instanceof AssignToLocalVariable) + " -> " + _operandStart.getNextExpr());
       }
       boolean txformed = false;
 
@@ -1645,7 +1670,6 @@ public class MethodModel{
          deoptimizeReverseBranches();
 
          // pass #4
-
          foldExpressions();
 
          // Accessor conversion only works on member object arrays
@@ -1700,7 +1724,7 @@ public class MethodModel{
    public String getName() {
       return (method.getClassModel().getMethod(method.getName(), method.getDescriptor()).getClassModel().getClassWeAreModelling()
             .getName().replace('.', '_')
-            + "__" + method.getName());
+            + "__" + method.getName().replace('<', '_').replace('>', '_'));
    }
 
    public String getReturnType() {

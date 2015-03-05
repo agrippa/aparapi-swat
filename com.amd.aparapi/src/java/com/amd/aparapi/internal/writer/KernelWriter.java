@@ -77,6 +77,14 @@ public abstract class KernelWriter extends BlockWriter{
 
    private Entrypoint entryPoint = null;
 
+   private boolean processingConstructor = false;
+
+   private int countAllocs = 0;
+
+   private String currentReturnType = null;
+
+   private Set<MethodModel> mayFailHeapAllocation = null;
+
    public final static Map<String, String> javaToCLIdentifierMap = new HashMap<String, String>();
    {
       javaToCLIdentifierMap.put("getGlobalId()I", "get_global_id(0)");
@@ -163,7 +171,82 @@ public abstract class KernelWriter extends BlockWriter{
       }
    }
 
-   @Override public void writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
+   @Override public void writeReturn(Return ret) throws CodeGenException {
+     write("return");
+     if (processingConstructor) {
+       write(" (this)");
+     } else if (ret.getStackConsumeCount() > 0) {
+       write("(");
+       writeInstruction(ret.getFirstChild());
+       write(")");
+     }
+   }
+
+   private String doIndent(String str) {
+     StringBuilder builder = new StringBuilder();
+     for (int i = 0; i < indent; i++) {
+       builder.append("   ");
+     }
+     builder.append(str);
+     return builder.toString();
+   }
+
+   @Override public String getAllocCheck(String condition) {
+     assert(currentReturnType != null);
+     final String nullReturn;
+     if (currentReturnType.startsWith("L") || currentReturnType.startsWith("[")) {
+       nullReturn = "0x0";
+     } else if (currentReturnType.equals("I") || currentReturnType.equals("L") || currentReturnType.equals("F") || currentReturnType.equals("D")) {
+       nullReturn = "0";
+     } else {
+       throw new RuntimeException("Unsupported type descriptor " + currentReturnType);
+     }
+
+     System.err.println("currentReturnType = " + currentReturnType);
+     String checkStr = "if (" + condition + ") { " + 
+       "this->alloc_failed = 1; return (" + nullReturn + "); }";
+     String indentedCheckStr = doIndent(checkStr);
+
+     return indentedCheckStr;
+   }
+
+   @Override public void writeConstructorCall(ConstructorCall call) throws CodeGenException {
+     I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
+     New newVar = call.getNewVar();
+
+     MethodEntry constructorEntry = invokeSpecial.getConstantPoolMethodEntry();
+
+     MethodModel m = entryPoint.getCallTarget(constructorEntry, true);
+     assert(m != null);
+     write(m.getName());
+     write("(");
+
+     String typeName = m.getMethod().getOwnerClassModel().getClassWeAreModelling().getName();
+     String allocVarName = "__alloc" + (countAllocs++);
+     String allocStr = "__global " + typeName + " * " + allocVarName +
+       " = (__global " + typeName + " *)alloc(this->heap, this->free_index, " + 
+       "sizeof(" + typeName + "));";
+     String indentedAllocStr = doIndent(allocStr);
+
+     String indentedCheckStr = getAllocCheck(allocVarName + " == 0x0");
+
+     StringBuilder allocLine = new StringBuilder();
+     allocLine.append(indentedAllocStr);
+     allocLine.append("\n");
+     allocLine.append(indentedCheckStr);
+     writeBeforeCurrentLine(allocLine.toString());
+
+     write(allocVarName);
+
+     for (int i = 0; i < constructorEntry.getStackConsumeCount(); i++) {
+       write(", ");
+       writeInstruction(invokeSpecial.getArg(i));
+     }
+
+     write(")");
+   }
+
+   @Override public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       final int argc = _methodEntry.getStackConsumeCount();
 
       final String methodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
@@ -171,6 +254,7 @@ public abstract class KernelWriter extends BlockWriter{
 
       final String barrierAndGetterMappings = javaToCLIdentifierMap.get(methodName + methodSignature);
 
+      boolean writeAllocCheck = false;
       if (barrierAndGetterMappings != null) {
          // this is one of the OpenCL barrier or size getter methods
          // write the mapping and exit
@@ -190,6 +274,7 @@ public abstract class KernelWriter extends BlockWriter{
       } else {
          final boolean isSpecial = _methodCall instanceof I_INVOKESPECIAL;
          MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
+         writeAllocCheck =mayFailHeapAllocation.contains(m);
 
          FieldEntry getterField = null;
          if (m != null && m.isGetter()) {
@@ -201,7 +286,7 @@ public abstract class KernelWriter extends BlockWriter{
              String fieldName = getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
              write("this->");
              write(fieldName);
-             return;
+             return false;
            } else if (_methodCall instanceof VirtualMethodCall) {
              VirtualMethodCall virt = (VirtualMethodCall) _methodCall;
              if (virt.getInstanceReference() instanceof LocalVariableConstIndexLoad) {
@@ -210,7 +295,7 @@ public abstract class KernelWriter extends BlockWriter{
                if (!info.isArray()) {
                  String fieldName = getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                  write(info.getVariableName() + "." + fieldName);
-                 return;
+                 return false;
                }
              }
            }
@@ -218,7 +303,7 @@ public abstract class KernelWriter extends BlockWriter{
          boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
                .contains(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
          if (noCL) {
-            return;
+            return false;
          }
          final String intrinsicMapping = Kernel.getMappedMethodName(_methodEntry);
          // System.out.println("getMappedMethodName for " + methodName + " returned " + mapping);
@@ -230,6 +315,11 @@ public abstract class KernelWriter extends BlockWriter{
 
             if (m != null) {
                write(m.getName());
+            } else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
+              /*
+               * Do nothing if we're in a constructor calling the
+               * java.lang.Object super constructor
+               */
             } else {
                // Must be a library call like rsqrt
                assert isMapped : _methodEntry + " should be mapped method!";
@@ -244,7 +334,10 @@ public abstract class KernelWriter extends BlockWriter{
 
          if ((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) {
 
-            final Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
+            Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
+            if (i instanceof CloneInstruction) {
+              i = ((CloneInstruction)i).getReal();
+            }
 
             if (i instanceof I_ALOAD_0) {
                write("this");
@@ -258,8 +351,12 @@ public abstract class KernelWriter extends BlockWriter{
                write("[");
                writeInstruction(arrayAccess.getArrayIndex());
                write("])");
+            } else if (i instanceof New) {
+              // Constructor call
+              assert methodName.equals("<init>");
+              writeInstruction(i);
             } else {
-               assert false : "unhandled call from: " + i;
+               assert false : "unhandled call to " + _methodEntry + " from: " + i;
             }
          }
          for (int arg = 0; arg < argc; arg++) {
@@ -270,6 +367,7 @@ public abstract class KernelWriter extends BlockWriter{
          }
          write(")");
       }
+      return writeAllocCheck;
    }
 
    private boolean isThis(Instruction instruction) {
@@ -293,6 +391,22 @@ public abstract class KernelWriter extends BlockWriter{
 
    public final static String CONSTANT_ANNOTATION_NAME = "L" + com.amd.aparapi.Kernel.Constant.class.getName().replace('.', '/')
          + ";";
+
+   private boolean doesHeapAllocation(MethodModel mm,
+       Set<MethodModel> mayFailHeapAllocation) {
+     if (mayFailHeapAllocation.contains(mm)) {
+       return true;
+     }
+
+     for (MethodModel callee : mm.getCalledMethods()) {
+       if (doesHeapAllocation(callee, mayFailHeapAllocation)) {
+         mayFailHeapAllocation.add(mm);
+         return true;
+       }
+     }
+
+     return false;
+   }
 
    @Override public void write(Entrypoint _entryPoint,
          Collection<ScalaParameter> params) throws CodeGenException {
@@ -446,6 +560,19 @@ public abstract class KernelWriter extends BlockWriter{
          }
       }
 
+      if (_entryPoint.requiresHeap()) {
+        argLines.add("__global void *heap");
+        argLines.add("__global uint *free_index");
+
+        assigns.add("this->heap = heap");
+        assigns.add("this->free_index = free_index");
+        assigns.add("this->alloc_failed = 0");
+
+        thisStruct.add("__global void *heap");
+        thisStruct.add("__global uint *free_index");
+        thisStruct.add("int alloc_failed");
+      }
+
       if (Config.enableByteWrites || _entryPoint.requiresByteAddressableStorePragma()) {
          // Starting with OpenCL 1.1 (which is as far back as we support)
          // this feature is part of the core, so we no longer need this pragma
@@ -464,7 +591,7 @@ public abstract class KernelWriter extends BlockWriter{
          writePragma("cl_khr_local_int32_extended_atomics", true);
       }
 
-      if (Config.enableAtomic64 || _entryPoint.requiresAtomic64Pragma()) {
+      if (Config.enableAtomic64 || _entryPoint.requiresAtomic64Pragma() || _entryPoint.requiresHeap()) {
          usesAtomics = true;
          writePragma("cl_khr_int64_base_atomics", true);
          writePragma("cl_khr_int64_extended_atomics", true);
@@ -488,6 +615,22 @@ public abstract class KernelWriter extends BlockWriter{
          writePragma("cl_khr_fp64", true);
          newLine();
       }
+
+      // Heap allocation
+      write("__global void *alloc(__global void *heap, __global uint *free_index, int nbytes) {");
+      in();
+      newLine();
+      {
+        write("__global unsigned char *cheap = (__global unsigned char *)heap;");
+        newLine();
+        write("uint offset = atomic_add(free_index, nbytes);");
+        newLine();
+        write("return (__global void *)(cheap + offset);");
+      }
+      out();
+      newLine();
+      write("}");
+      newLine();
 
       // Emit structs for oop transformation accessors
       for (final ClassModel cm : _entryPoint.getObjectArrayFieldsClasses().values()) {
@@ -557,6 +700,16 @@ public abstract class KernelWriter extends BlockWriter{
       merged.addAll(_entryPoint.getCalledMethods());
       merged.add(_entryPoint.getMethodModel());
 
+      assert(mayFailHeapAllocation == null);
+      mayFailHeapAllocation = new HashSet<MethodModel>();
+      for (final MethodModel mm : merged) {
+        if (mm.requiresHeap()) mayFailHeapAllocation.add(mm);
+      }
+
+      for (final MethodModel mm : merged) {
+        doesHeapAllocation(mm, mayFailHeapAllocation);
+      }
+
       for (final MethodModel mm : merged) {
          // write declaration :)
          if (mm.isPrivateMemoryGetter()) {
@@ -564,11 +717,25 @@ public abstract class KernelWriter extends BlockWriter{
          }
 
          final String returnType = mm.getReturnType();
-         // Arrays always map to __private or__global arrays
-         if (returnType.startsWith("[")) {
-            write(" __global ");
+         this.currentReturnType = returnType;
+
+         if (mm.getSimpleName().equals("<init>")) {
+           // Transform constructors to return a reference to their object type
+           ClassModel owner = mm.getMethod().getClassModel();
+           write(" __global " + owner.getClassWeAreModelling().getName() + " * ");
+           processingConstructor = true;
+         } else if (returnType.startsWith("L")) {
+           write("__global " + convertType(returnType, true));
+           write("*");
+           processingConstructor = false;
+         } else {
+           // Arrays always map to __private or__global arrays
+           if (returnType.startsWith("[")) {
+              write(" __global ");
+           }
+           write(convertType(returnType, true));
+           processingConstructor = false;
          }
-         write(convertType(returnType, true));
 
          write(mm.getName() + "(");
 
@@ -662,7 +829,11 @@ public abstract class KernelWriter extends BlockWriter{
       in();
       newLine();
       {
-         write(outParam.name + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
+         if (outParam.clazz != null) {
+           write(outParam.name + "[i] = *" + _entryPoint.getMethodModel().getName() + "(this");
+         } else {
+           write(outParam.name + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
+         }
          for (ScalaParameter p : params) {
            if (p.dir == ScalaParameter.DIRECTION.IN) {
              write(", " + p.name + "[i]");
@@ -722,7 +893,7 @@ public abstract class KernelWriter extends BlockWriter{
       write("this->");
    }
 
-   @Override public void writeInstruction(Instruction _instruction) throws CodeGenException {
+   @Override public boolean writeInstruction(Instruction _instruction) throws CodeGenException {
       if ((_instruction instanceof I_IUSHR) || (_instruction instanceof I_LUSHR)) {
          final BinaryOperator binaryInstruction = (BinaryOperator) _instruction;
          final Instruction parent = binaryInstruction.getParentExpr();
@@ -752,8 +923,9 @@ public abstract class KernelWriter extends BlockWriter{
          if (needsParenthesis) {
             write(")");
          }
+         return false;
       } else {
-         super.writeInstruction(_instruction);
+         return super.writeInstruction(_instruction);
       }
    }
 
@@ -772,7 +944,20 @@ public abstract class KernelWriter extends BlockWriter{
 
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){
+         private int writtenSinceLastNewLine = 0;
+
+         @Override public void writeBeforeCurrentLine(String _string) {
+           openCLStringBuilder.insert(openCLStringBuilder.length() -
+               writtenSinceLastNewLine, _string + "\n");
+         }
+
          @Override public void write(String _string) {
+            int lastNewLine = _string.lastIndexOf('\n');
+            if (lastNewLine != -1) {
+              writtenSinceLastNewLine = _string.length() - lastNewLine - 1;
+            } else {
+              writtenSinceLastNewLine += _string.length();
+            }
             openCLStringBuilder.append(_string);
          }
       };

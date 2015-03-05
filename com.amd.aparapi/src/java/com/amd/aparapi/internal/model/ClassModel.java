@@ -2681,7 +2681,8 @@ public class ClassModel{
             return (entry);
          }
       }
-      return superClazz.getField(_name);
+      if (superClazz == null) return null;
+      else return superClazz.getField(_name);
    }
 
    public ClassModelMethod getPrimitiveApplyMethod() {
@@ -2691,7 +2692,7 @@ public class ClassModel{
            String descriptor = method.getDescriptor();
            String returnType = descriptor.substring(descriptor.lastIndexOf(')') + 1);
 
-           if (name.equals("apply") && !returnType.startsWith("L")) {
+           if (name.equals("apply") && !returnType.equals("Ljava/lang/Object;")) {
               if (result != null) {
                   // We expect only one match per Function in Scala
                   throw new RuntimeException("Multiple matches");

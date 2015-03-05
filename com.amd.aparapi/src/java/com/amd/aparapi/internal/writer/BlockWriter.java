@@ -67,6 +67,10 @@ public abstract class BlockWriter{
 
    public abstract void write(String _string);
 
+   public abstract void writeBeforeCurrentLine(String _string);
+
+   public abstract String getAllocCheck(String condition);
+
    public void writeln(String _string) {
       write(_string);
       newLine();
@@ -281,12 +285,14 @@ public abstract class BlockWriter{
             writeComposite((CompositeInstruction) instruction);
          } else if (!instruction.getByteCode().equals(ByteCode.NONE)) {
             newLine();
-            writeInstruction(instruction);
+            boolean writeCheck = writeInstruction(instruction);
             write(";");
-
+            if (writeCheck) {
+              //TODO call getAllocCheck and write it
+              write(getAllocCheck("this->alloc_failed"));
+            }
          }
       }
-
    }
 
    protected void writeGetterBlock(FieldEntry accessorVariableFieldEntry) {
@@ -362,7 +368,9 @@ public abstract class BlockWriter{
       return ("(" + raw + ")");
    }
 
-   public void writeInstruction(Instruction _instruction) throws CodeGenException {
+   public boolean writeInstruction(Instruction _instruction) throws CodeGenException {
+      boolean writeCheck = false;
+
       if (_instruction instanceof CompositeIfElseInstruction) {
          write("(");
          final Instruction lhs = writeConditional(((CompositeInstruction) _instruction).getBranchSet());
@@ -380,10 +388,13 @@ public abstract class BlockWriter{
          if (assignToLocalVariable.isDeclaration()) {
             final String descriptor = localVariableInfo.getVariableDescriptor();
             // Arrays always map to __global arrays
-            if (descriptor.startsWith("[")) {
+            if (descriptor.startsWith("[") || descriptor.startsWith("L")) {
                write(" __global ");
             }
             write(convertType(descriptor, true));
+            if (descriptor.startsWith("L")) {
+              write("*"); // All local assigns to object-typed variables should be a constructor
+            }
          }
          if (localVariableInfo == null) {
             throw new CodeGenException("outOfScope" + _instruction.getThisPC() + " = ");
@@ -603,21 +614,13 @@ public abstract class BlockWriter{
          writeInstruction(unaryInstruction.getUnary());
          //   write(")");
       } else if (_instruction instanceof Return) {
-
-         final Return ret = (Return) _instruction;
-         write("return");
-         if (ret.getStackConsumeCount() > 0) {
-            write("(");
-            writeInstruction(ret.getFirstChild());
-            write(")");
-         }
-
+          writeReturn((Return) _instruction);
       } else if (_instruction instanceof MethodCall) {
          final MethodCall methodCall = (MethodCall) _instruction;
 
          final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
 
-         writeMethod(methodCall, methodEntry);
+         writeCheck = writeMethod(methodCall, methodEntry);
       } else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
          final CloneInstruction cloneInstruction = (CloneInstruction) _instruction;
          writeInstruction(cloneInstruction.getReal());
@@ -723,11 +726,18 @@ public abstract class BlockWriter{
       } else if (_instruction instanceof I_POP) {
          //POP discarded void call return?
          writeInstruction(_instruction.getFirstChild());
+      } else if (_instruction instanceof ConstructorCall) {
+        final ConstructorCall call = (ConstructorCall)_instruction;
+        writeConstructorCall(call);
       } else {
          throw new CodeGenException(String.format("%s", _instruction.getByteCode().toString().toLowerCase()));
       }
 
+      return writeCheck;
    }
+
+   public abstract void writeConstructorCall(ConstructorCall call) throws CodeGenException;
+   public abstract void writeReturn(Return ret) throws CodeGenException;
 
    private boolean isMultiDimensionalArray(NameAndTypeEntry nameAndTypeEntry) {
       return nameAndTypeEntry.getDescriptorUTF8Entry().getUTF8().startsWith("[[");
@@ -756,11 +766,11 @@ public abstract class BlockWriter{
       return (AccessInstanceField) load;
    }
 
-   public void writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
+   public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
             .contains(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
       if (noCL) {
-         return;
+         return false;
       }
 
       if (_methodCall instanceof VirtualMethodCall) {
@@ -784,6 +794,7 @@ public abstract class BlockWriter{
       }
       write(")");
 
+      return false;
    }
 
    public void writeThisRef() {

@@ -613,7 +613,8 @@ public class InstructionSet{
       FIELD_ARRAY_ELEMENT_ASSIGN, //
       HEAD, //
       COMPOSITE_EMPTY_LOOP, //
-      COMPOSITE_DO_WHILE;
+      COMPOSITE_DO_WHILE,
+      CONSTRUCTOR;
 
       private final Class<?> clazz;
 
@@ -2647,6 +2648,24 @@ public class InstructionSet{
       @Override public int getStackProduceCount() {
          return (getConstantPoolInterfaceMethodEntry().getStackProduceCount()); // + 1 to account for instance 'this'
       }
+   }
+
+   public static class ConstructorCall extends Instruction {
+     private final I_INVOKESPECIAL invokeSpecial;
+     New newVar;
+
+     public ConstructorCall(MethodModel method, I_INVOKESPECIAL invokeSpecial, New newVar) {
+       super(method, ByteCode.CONSTRUCTOR, -1);
+       this.invokeSpecial = invokeSpecial;
+       this.newVar = newVar;
+     }
+
+     @Override public String getDescription() {
+       return ("Constructor call");
+     }
+
+     public I_INVOKESPECIAL getInvokeSpecial() { return invokeSpecial; }
+     public New getNewVar() { return newVar; }
    }
 
    public static class I_INVOKESPECIAL extends Index16 implements VirtualMethodCall{

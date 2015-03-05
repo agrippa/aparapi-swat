@@ -20,6 +20,8 @@ import com.amd.aparapi.internal.instruction.InstructionSet.I_IINC;
 import com.amd.aparapi.internal.instruction.InstructionSet.LocalVariableTableIndexAccessor;
 import com.amd.aparapi.internal.instruction.InstructionSet.MethodCall;
 import com.amd.aparapi.internal.instruction.InstructionSet.OperatorInstruction;
+import com.amd.aparapi.internal.instruction.InstructionSet.ConstructorCall;
+import com.amd.aparapi.internal.instruction.InstructionSet.Return;
 import com.amd.aparapi.internal.model.ClassModel;
 import com.amd.aparapi.internal.model.Entrypoint;
 import com.amd.aparapi.internal.model.MethodModel;
@@ -135,6 +137,10 @@ public class InstructionHelper{
          sb.append(_string);
       }
 
+      @Override public void writeBeforeCurrentLine(String _string) {
+        throw new UnsupportedOperationException();
+      }
+
       @Override public String toString() {
          return (sb.toString().trim());
       }
@@ -151,6 +157,19 @@ public class InstructionHelper{
 
       @Override public void write(Entrypoint entryPoint, java.util.Collection<ScalaParameter> params) {
          // TODO Auto-generated method stub
+      }
+
+      @Override public void writeConstructorCall(ConstructorCall call) throws CodeGenException {
+        // TODO
+      }
+
+      @Override public void writeReturn(Return ret) throws CodeGenException {
+        // TODO
+      }
+
+      @Override public String getAllocCheck(String condition) {
+        // TODO
+        return null;
       }
 
       @Override public void writeMethodBody(MethodModel _methodModel) throws CodeGenException {

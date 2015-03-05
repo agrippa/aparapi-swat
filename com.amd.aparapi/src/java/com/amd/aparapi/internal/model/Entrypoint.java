@@ -96,6 +96,8 @@ public class Entrypoint implements Cloneable {
    */
    private boolean usesDoubles;
 
+   private boolean usesNew;
+
    /**
       True is an indication to use the byte addressable store pragma
    */
@@ -110,6 +112,10 @@ public class Entrypoint implements Cloneable {
 
    public boolean requiresDoublePragma() {
       return usesDoubles;
+   }
+
+   public boolean requiresHeap() {
+     return usesNew;
    }
 
    public boolean requiresByteAddressableStorePragma() {
@@ -467,7 +473,9 @@ public class Entrypoint implements Cloneable {
          if (logger.isLoggable(Level.FINE)) {
             logger.fine("Enabling doubles on " + methodModel.getName());
          }
-
+      }
+      if (methodModel.requiresHeap()) {
+        usesNew = true;
       }
       if (methodModel.requiresByteAddressableStorePragma()) {
          usesByteWrites = true;
@@ -545,7 +553,9 @@ public class Entrypoint implements Cloneable {
                if (logger.isLoggable(Level.FINE)) {
                   logger.fine("Enabling doubles on " + methodModel.getName());
                }
-
+            }
+            if (methodModel.requiresHeap()) {
+              usesNew = true;
             }
             if (methodModel.requiresByteAddressableStorePragma()) {
                usesByteWrites = true;
