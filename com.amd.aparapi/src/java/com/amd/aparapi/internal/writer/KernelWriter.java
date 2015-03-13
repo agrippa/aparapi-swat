@@ -854,7 +854,7 @@ public abstract class KernelWriter extends BlockWriter{
          if (outParam.clazz != null) {
            write("__global " + outParam.type + " result = " + _entryPoint.getMethodModel().getName() + "(this");
          } else {
-           write(outParam.type + " result = " + _entryPoint.getMethodModel().getName() + "(this");
+           write(outParam.name + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
          }
          for (ScalaParameter p : params) {
            if (p.dir == ScalaParameter.DIRECTION.IN) {
