@@ -69,7 +69,7 @@ public abstract class BlockWriter{
 
    public abstract void writeBeforeCurrentLine(String _string);
 
-   public abstract String getAllocCheck(String condition);
+   public abstract String getAllocCheck();
 
    public void writeln(String _string) {
       write(_string);
@@ -288,8 +288,7 @@ public abstract class BlockWriter{
             boolean writeCheck = writeInstruction(instruction);
             write(";");
             if (writeCheck) {
-              //TODO call getAllocCheck and write it
-              write(getAllocCheck("this->alloc_failed"));
+              write(getAllocCheck());
             }
          }
       }

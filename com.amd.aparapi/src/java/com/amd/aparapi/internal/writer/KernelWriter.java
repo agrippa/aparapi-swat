@@ -191,7 +191,7 @@ public abstract class KernelWriter extends BlockWriter{
      return builder.toString();
    }
 
-   @Override public String getAllocCheck(String condition) {
+   @Override public String getAllocCheck() {
      assert(currentReturnType != null);
      final String nullReturn;
      if (currentReturnType.startsWith("L") || currentReturnType.startsWith("[")) {
@@ -203,8 +203,7 @@ public abstract class KernelWriter extends BlockWriter{
      }
 
      System.err.println("currentReturnType = " + currentReturnType);
-     String checkStr = "if (" + condition + ") { " + 
-       "this->alloc_failed = 1; return (" + nullReturn + "); }";
+     String checkStr = "if (this->alloc_failed) { return (" + nullReturn + "); }";
      String indentedCheckStr = doIndent(checkStr);
 
      return indentedCheckStr;
@@ -224,11 +223,11 @@ public abstract class KernelWriter extends BlockWriter{
      String typeName = m.getMethod().getOwnerClassModel().getClassWeAreModelling().getName();
      String allocVarName = "__alloc" + (countAllocs++);
      String allocStr = "__global " + typeName + " * " + allocVarName +
-       " = (__global " + typeName + " *)alloc(this->heap, this->free_index, " + 
-       "sizeof(" + typeName + "));";
+       " = (__global " + typeName + " *)alloc(this->heap, this->free_index, this->heap_size, " + 
+       "sizeof(" + typeName + "), &this->alloc_failed);";
      String indentedAllocStr = doIndent(allocStr);
 
-     String indentedCheckStr = getAllocCheck(allocVarName + " == 0x0");
+     String indentedCheckStr = getAllocCheck();
 
      StringBuilder allocLine = new StringBuilder();
      allocLine.append(indentedAllocStr);
@@ -294,7 +293,7 @@ public abstract class KernelWriter extends BlockWriter{
                LocalVariableInfo info = ld.getLocalVariableInfo();
                if (!info.isArray()) {
                  String fieldName = getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-                 write(info.getVariableName() + "." + fieldName);
+                 write(info.getVariableName() + "->" + fieldName);
                  return false;
                }
              }
@@ -563,14 +562,18 @@ public abstract class KernelWriter extends BlockWriter{
       if (_entryPoint.requiresHeap()) {
         argLines.add("__global void *heap");
         argLines.add("__global uint *free_index");
+        argLines.add("long heap_size");
+        argLines.add("__global int *processing_succeeded");
+        argLines.add("__global int *any_failed");
 
         assigns.add("this->heap = heap");
         assigns.add("this->free_index = free_index");
-        assigns.add("this->alloc_failed = 0");
+        assigns.add("this->heap_size = heap_size");
 
         thisStruct.add("__global void *heap");
         thisStruct.add("__global uint *free_index");
         thisStruct.add("int alloc_failed");
+        thisStruct.add("long heap_size");
       }
 
       if (Config.enableByteWrites || _entryPoint.requiresByteAddressableStorePragma()) {
@@ -598,7 +601,7 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       if (usesAtomics) {
-         write("int atomicAdd(__global int *_arr, int _index, int _delta){");
+         write("static int atomicAdd(__global int *_arr, int _index, int _delta){");
          in();
          {
             newLine();
@@ -617,7 +620,7 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       // Heap allocation
-      write("__global void *alloc(__global void *heap, __global uint *free_index, int nbytes) {");
+      write("static __global void *alloc(__global void *heap, volatile __global uint *free_index, long heap_size, int nbytes, int *alloc_failed) {");
       in();
       newLine();
       {
@@ -625,7 +628,9 @@ public abstract class KernelWriter extends BlockWriter{
         newLine();
         write("uint offset = atomic_add(free_index, nbytes);");
         newLine();
-        write("return (__global void *)(cheap + offset);");
+        write("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
+        newLine();
+        write("else return (__global void *)(cheap + offset);");
       }
       out();
       newLine();
@@ -722,16 +727,18 @@ public abstract class KernelWriter extends BlockWriter{
          if (mm.getSimpleName().equals("<init>")) {
            // Transform constructors to return a reference to their object type
            ClassModel owner = mm.getMethod().getClassModel();
-           write(" __global " + owner.getClassWeAreModelling().getName() + " * ");
+           write("static __global " + owner.getClassWeAreModelling().getName() + " * ");
            processingConstructor = true;
          } else if (returnType.startsWith("L")) {
-           write("__global " + convertType(returnType, true));
+           write("static __global " + convertType(returnType, true));
            write("*");
            processingConstructor = false;
          } else {
            // Arrays always map to __private or__global arrays
            if (returnType.startsWith("[")) {
-              write(" __global ");
+              write("static __global ");
+           } else {
+             write("static ");
            }
            write(convertType(returnType, true));
            processingConstructor = false;
@@ -773,7 +780,13 @@ public abstract class KernelWriter extends BlockWriter{
                   write(" __global ");
                }
 
+               if (descriptor.startsWith("L")) {
+                 write("__global ");
+               }
                write(convertType(descriptor, true));
+               if (descriptor.startsWith("L")) {
+                 write("*");
+               }
                write(lvi.getVariableName());
                alreadyHasFirstArg = true;
             }
@@ -829,17 +842,59 @@ public abstract class KernelWriter extends BlockWriter{
       in();
       newLine();
       {
+         if (_entryPoint.requiresHeap()) {
+           write("if (processing_succeeded[i]) continue;");
+           newLine();
+           newLine();
+
+           write("this->alloc_failed = 0;");
+           newLine();
+         }
+
          if (outParam.clazz != null) {
-           write(outParam.name + "[i] = *" + _entryPoint.getMethodModel().getName() + "(this");
+           write("__global " + outParam.type + " result = " + _entryPoint.getMethodModel().getName() + "(this");
          } else {
-           write(outParam.name + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
+           write(outParam.type + " result = " + _entryPoint.getMethodModel().getName() + "(this");
          }
          for (ScalaParameter p : params) {
            if (p.dir == ScalaParameter.DIRECTION.IN) {
-             write(", " + p.name + "[i]");
+             if (p.clazz == null) {
+               write(", " + p.name + "[i]");
+             } else {
+               write(", " + p.name + " + i");
+             }
            }
          }
          write(");");
+         newLine();
+
+         if (_entryPoint.requiresHeap()) {
+           write("if (this->alloc_failed) {");
+           in();
+           newLine();
+           {
+             write("processing_succeeded[i] = 0;");
+             newLine();
+             write("*any_failed = 1;");
+           }
+           out();
+           newLine();
+           write("} else {");
+           in();
+           newLine();
+           {
+             write("processing_succeeded[i] = 1;");
+             newLine();
+             if (outParam.clazz != null) {
+                 write(outParam.name + "[i] = *result;");
+             } else {
+                 write(outParam.name + "[i] = result;");
+             }
+           }
+           out();
+           newLine();
+           write("}");
+         }
       }
       out();
       newLine();

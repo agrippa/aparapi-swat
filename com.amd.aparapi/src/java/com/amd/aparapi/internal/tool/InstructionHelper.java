@@ -167,7 +167,7 @@ public class InstructionHelper{
         // TODO
       }
 
-      @Override public String getAllocCheck(String condition) {
+      @Override public String getAllocCheck() {
         // TODO
         return null;
       }
