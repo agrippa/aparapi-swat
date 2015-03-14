@@ -456,7 +456,6 @@ public class Entrypoint implements Cloneable {
 
       if (params != null) {
         for (ScalaParameter p : params) {
-          System.out.println(p.toString());
           if (p.clazz != null) {
             addClass(p.clazz.getName());
           }
