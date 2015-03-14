@@ -2273,6 +2273,8 @@ public class ClassModel{
 
       private final static String LOCALVARIABLETYPETABLE_TAG = "LocalVariableTypeTable";
 
+      private final static String SCALASIG_TAG = "ScalaSig";
+
       public AttributePool(ByteReader _byteReader, String name) {
          final int attributeCount = _byteReader.u2();
          AttributePoolEntry entry = null;
@@ -2331,6 +2333,8 @@ public class ClassModel{
             } else if (attributeName.equals(LOCALVARIABLETYPETABLE_TAG)) {
                // http://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html#jvms-4.7.14
                entry = new LocalVariableTypeTableEntry(_byteReader, attributeNameIndex, length);
+            } else if (attributeName.equals(SCALASIG_TAG)) {
+                // Do nothing
             } else {
                logger.warning("Found unexpected Attribute (name = " + attributeName + ")");
                entry = new OtherEntry(_byteReader, attributeNameIndex, length);
