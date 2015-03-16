@@ -793,12 +793,12 @@ public class Entrypoint implements Cloneable {
                      final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.getNameAndTypeEntry()
                            .getNameUTF8Entry().getUTF8());
 
-                     c.getStructMemberOffsets().add(UnsafeWrapper.objectFieldOffset(rfield));
+                     long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
+                     final String fieldType = f.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
 
-                     final String fType = f.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-                     //c.getStructMemberTypes().add(TypeSpec.valueOf(fType.equals("Z") ? "B" : fType));
-                     c.getStructMemberTypes().add(TypeSpec.valueOf(fType));
-                     final int fSize = TypeSpec.valueOf(fType.equals("Z") ? "B" : fType).getSize();
+                     c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType));
+
+                     final int fSize = TypeSpec.valueOf(fieldType.equals("Z") ? "B" : fieldType).getSize();
                      if (fSize > alignTo) {
                         alignTo = fSize;
                      }

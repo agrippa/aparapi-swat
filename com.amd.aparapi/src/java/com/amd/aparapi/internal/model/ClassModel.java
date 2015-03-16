@@ -2812,9 +2812,36 @@ public class ClassModel{
    // These fields use for accessor conversion
    private final ArrayList<FieldEntry> structMembers = new ArrayList<FieldEntry>();
 
-   private final ArrayList<Long> structMemberOffsets = new ArrayList<Long>();
+   public static class FieldDescriptor implements Comparable<FieldDescriptor> {
+       public final TypeSpec typ;
+       public final long offset;
 
-   private final ArrayList<TypeSpec> structMemberTypes = new ArrayList<TypeSpec>();
+       public FieldDescriptor(TypeSpec typ, long offset) {
+           this.typ = typ;
+           this.offset = offset;
+       }
+
+       @Override
+       public boolean equals(Object obj) {
+           if (obj instanceof FieldDescriptor) {
+               FieldDescriptor other = (FieldDescriptor)obj;
+               return other.typ.equals(this.typ) && other.offset == this.offset;
+           }
+           return false;
+       }
+
+       @Override
+       public int hashCode() {
+           return (int)offset;
+       }
+
+       @Override
+       public int compareTo(FieldDescriptor other) {
+           return (int)this.offset - (int)other.offset;
+       }
+   }
+
+   private final TreeSet<FieldDescriptor> structMemberInfo = new TreeSet<FieldDescriptor>();
 
    private int totalStructSize = 0;
 
@@ -2822,12 +2849,24 @@ public class ClassModel{
       return structMembers;
    }
 
-   public ArrayList<Long> getStructMemberOffsets() {
-      return structMemberOffsets;
+   public TreeSet<FieldDescriptor> getStructMemberInfo() {
+       return structMemberInfo;
    }
 
-   public ArrayList<TypeSpec> getStructMemberTypes() {
-      return structMemberTypes;
+   public FieldEntry getStructMemberFor(FieldDescriptor field) {
+       int index = 0;
+       for (FieldDescriptor d : structMemberInfo) {
+           if (d.equals(field)) break;
+           index++;
+       }
+       if (index >= structMembers.size()) {
+           throw new RuntimeException("Unable to find matching field entry");
+       }
+       return structMembers.get(index);
+   }
+
+   public void addStructMember(long offset, TypeSpec typ) {
+       this.structMemberInfo.add(new FieldDescriptor(typ, offset));
    }
 
    public int getTotalStructSize() {

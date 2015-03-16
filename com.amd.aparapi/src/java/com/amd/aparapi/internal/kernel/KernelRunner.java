@@ -70,6 +70,7 @@ import com.amd.aparapi.internal.exception.CodeGenException;
 import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.jni.KernelRunnerJNI;
 import com.amd.aparapi.internal.model.ClassModel;
+import com.amd.aparapi.internal.model.ClassModel.FieldDescriptor;
 import com.amd.aparapi.internal.model.Entrypoint;
 import com.amd.aparapi.internal.util.UnsafeWrapper;
 import com.amd.aparapi.internal.writer.KernelWriter;
@@ -664,13 +665,14 @@ public class KernelRunner extends KernelRunnerJNI{
          int sizeWritten = 0;
 
          final Object object = UnsafeWrapper.getObject(newRef, arrayBaseOffset + (arrayScale * j));
-         for (int i = 0; i < c.getStructMemberTypes().size(); i++) {
-            final TypeSpec t = c.getStructMemberTypes().get(i);
-            final long offset = c.getStructMemberOffsets().get(i);
+
+         for (FieldDescriptor field : c.getStructMemberInfo()) {
+            final TypeSpec t = field.typ;
+            final long offset = field.offset;
 
             if (logger.isLoggable(Level.FINEST)) {
-               logger.finest("name = " + c.getStructMembers().get(i).getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + " t= "
-                     + t);
+               String fieldName = c.getStructMemberFor(field).getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+               logger.finest("name = " + fieldName + " t= " + t);
             }
 
             switch (t) {
@@ -765,9 +767,9 @@ public class KernelRunner extends KernelRunnerJNI{
       for (int j = 0; j < objArraySize; j++) {
          int sizeWritten = 0;
          final Object object = UnsafeWrapper.getObject(arg.getArray(), arrayBaseOffset + (arrayScale * j));
-         for (int i = 0; i < c.getStructMemberTypes().size(); i++) {
-            final TypeSpec t = c.getStructMemberTypes().get(i);
-            final long offset = c.getStructMemberOffsets().get(i);
+         for (FieldDescriptor field : c.getStructMemberInfo()) {
+            final TypeSpec t = field.typ;
+            final long offset = field.offset;
             switch (t) {
                case I: {
                   // read int value from buffer and store into obj in the array
