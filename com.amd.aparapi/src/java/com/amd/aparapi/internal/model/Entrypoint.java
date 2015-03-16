@@ -240,6 +240,7 @@ public class Entrypoint implements Cloneable {
 
             // Immediately add this class and all its supers if necessary
             memberClassModel = ClassModel.createClassModel(memberClass);
+
             if (logger.isLoggable(Level.FINEST)) {
                logger.finest("adding class " + className);
             }

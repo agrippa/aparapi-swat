@@ -648,6 +648,7 @@ public class ClassModel{
    public static ClassModel createClassModel(Class<?> _class) throws ClassParseException {
       if (CacheEnabler.areCachesEnabled())
          return classModelCache.computeIfAbsent(_class);
+
       return new ClassModel(_class);
    }
 
@@ -2274,6 +2275,7 @@ public class ClassModel{
       private final static String LOCALVARIABLETYPETABLE_TAG = "LocalVariableTypeTable";
 
       private final static String SCALASIG_TAG = "ScalaSig";
+      private final static String SCALA_TAG = "Scala";
 
       public AttributePool(ByteReader _byteReader, String name) {
          final int attributeCount = _byteReader.u2();
@@ -2333,7 +2335,7 @@ public class ClassModel{
             } else if (attributeName.equals(LOCALVARIABLETYPETABLE_TAG)) {
                // http://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html#jvms-4.7.14
                entry = new LocalVariableTypeTableEntry(_byteReader, attributeNameIndex, length);
-            } else if (attributeName.equals(SCALASIG_TAG)) {
+            } else if (attributeName.equals(SCALASIG_TAG) || attributeName.equals(SCALA_TAG)) {
                 // Do nothing
             } else {
                logger.warning("Found unexpected Attribute (name = " + attributeName + ")");
@@ -2601,8 +2603,13 @@ public class ClassModel{
     * @throws ClassParseException
     */
    private void parse(ClassLoader _classLoader, String _className) throws ClassParseException {
+      String classFilename = _className.replace('.', '/') + ".class";
+      InputStream stream = _classLoader.getResourceAsStream(classFilename);
+      if (stream == null) {
+        throw new RuntimeException("Unable to resolve " + classFilename);
+      }
 
-      parse(_classLoader.getResourceAsStream(_className.replace('.', '/') + ".class"));
+      parse(stream);
    }
 
    void parse(InputStream _inputStream) throws ClassParseException {
@@ -2755,11 +2762,20 @@ public class ClassModel{
          return superClazz.getMethod(_methodEntry, false);
       }
 
+      // If isn't a call to a super and isn't a call to this class, abort early
+      String thisClassName = getClassWeAreModelling().getName();
+      String methodClassName =
+        _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace(
+            '/', '.');
+      if (!thisClassName.equals(methodClassName)) return null;
+
       NameAndTypeEntry nameAndTypeEntry = _methodEntry.getNameAndTypeEntry();
       ClassModelMethod methodOrNull = getMethodOrNull(nameAndTypeEntry.getNameUTF8Entry().getUTF8(), nameAndTypeEntry
             .getDescriptorUTF8Entry().getUTF8());
-      if (methodOrNull == null)
+
+      if (methodOrNull == null) {
          return superClazz != null ? superClazz.getMethod(_methodEntry, false) : (null);
+      }
       return methodOrNull;
    }
 

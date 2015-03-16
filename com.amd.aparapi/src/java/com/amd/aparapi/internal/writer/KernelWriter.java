@@ -202,7 +202,6 @@ public abstract class KernelWriter extends BlockWriter{
        throw new RuntimeException("Unsupported type descriptor " + currentReturnType);
      }
 
-     System.err.println("currentReturnType = " + currentReturnType);
      String checkStr = "if (this->alloc_failed) { return (" + nullReturn + "); }";
      String indentedCheckStr = doIndent(checkStr);
 
@@ -220,7 +219,7 @@ public abstract class KernelWriter extends BlockWriter{
      write(m.getName());
      write("(");
 
-     String typeName = m.getMethod().getOwnerClassModel().getClassWeAreModelling().getName();
+     String typeName = m.getMethod().getOwnerClassModel().getClassWeAreModelling().getName().replace('.', '_');
      String allocVarName = "__alloc" + (countAllocs++);
      String allocStr = "__global " + typeName + " * " + allocVarName +
        " = (__global " + typeName + " *)alloc(this->heap, this->free_index, this->heap_size, " + 
@@ -698,7 +697,7 @@ public abstract class KernelWriter extends BlockWriter{
          writeln(";");
       }
       out();
-      write("}This;");
+      write("} This;");
       newLine();
 
       final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
@@ -724,13 +723,18 @@ public abstract class KernelWriter extends BlockWriter{
          final String returnType = mm.getReturnType();
          this.currentReturnType = returnType;
 
+         String convertedReturnType = convertType(returnType, true);
+         if (returnType.startsWith("L")) {
+           convertedReturnType = convertedReturnType.replace('.', '_');
+         }
+
          if (mm.getSimpleName().equals("<init>")) {
            // Transform constructors to return a reference to their object type
            ClassModel owner = mm.getMethod().getClassModel();
-           write("static __global " + owner.getClassWeAreModelling().getName() + " * ");
+           write("static __global " + owner.getClassWeAreModelling().getName().replace('.', '_') + " * ");
            processingConstructor = true;
          } else if (returnType.startsWith("L")) {
-           write("static __global " + convertType(returnType, true));
+           write("static __global " + convertedReturnType);
            write("*");
            processingConstructor = false;
          } else {
@@ -740,7 +744,7 @@ public abstract class KernelWriter extends BlockWriter{
            } else {
              write("static ");
            }
-           write(convertType(returnType, true));
+           write(convertedReturnType);
            processingConstructor = false;
          }
 
@@ -783,10 +787,11 @@ public abstract class KernelWriter extends BlockWriter{
                if (descriptor.startsWith("L")) {
                  write("__global ");
                }
-               write(convertType(descriptor, true));
+               String convertedType = convertType(descriptor, true);
                if (descriptor.startsWith("L")) {
-                 write("*");
+                 convertedType = convertedType.replace('.', '_') + "*";
                }
+               write(convertedType);
                write(lvi.getVariableName());
                alreadyHasFirstArg = true;
             }
@@ -810,7 +815,7 @@ public abstract class KernelWriter extends BlockWriter{
                newLine();
             }
 
-            write("__global " + p.type + " " + p.name);
+            write("__global " + p.type.replace('.', '_') + " " + p.name);
             if (p.dir == ScalaParameter.DIRECTION.OUT) {
                assert(outParam == null);
                outParam = p;
@@ -852,7 +857,7 @@ public abstract class KernelWriter extends BlockWriter{
          }
 
          if (outParam.clazz != null) {
-           write("__global " + outParam.type + " result = " + _entryPoint.getMethodModel().getName() + "(this");
+           write("__global " + outParam.type.replace('.', '_') + " result = " + _entryPoint.getMethodModel().getName() + "(this");
          } else {
            write(outParam.name + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
          }

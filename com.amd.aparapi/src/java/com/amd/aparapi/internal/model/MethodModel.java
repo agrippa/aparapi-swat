@@ -1727,6 +1727,10 @@ public class MethodModel{
             + "__" + method.getName().replace('<', '_').replace('>', '_'));
    }
 
+   public String getDescriptor() {
+     return method.getDescriptor();
+   }
+
    public String getReturnType() {
       final String returnType = method.getDescriptorUTF8Entry().getUTF8();
       final int index = returnType.indexOf(")");
