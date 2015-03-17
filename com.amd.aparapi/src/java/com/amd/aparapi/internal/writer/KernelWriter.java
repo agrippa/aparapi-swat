@@ -304,7 +304,6 @@ public abstract class KernelWriter extends BlockWriter{
             return false;
          }
          final String intrinsicMapping = Kernel.getMappedMethodName(_methodEntry);
-         // System.out.println("getMappedMethodName for " + methodName + " returned " + mapping);
          boolean isIntrinsic = false;
 
          if (intrinsicMapping == null) {
@@ -339,6 +338,8 @@ public abstract class KernelWriter extends BlockWriter{
 
             if (i instanceof I_ALOAD_0) {
                write("this");
+            } else if (i instanceof LocalVariableConstIndexLoad) {
+               writeInstruction(i);
             } else if (i instanceof AccessArrayElement) {
                final AccessArrayElement arrayAccess = (AccessArrayElement) ((VirtualMethodCall) _methodCall).getInstanceReference();
                final Instruction refAccess = arrayAccess.getArrayRef();

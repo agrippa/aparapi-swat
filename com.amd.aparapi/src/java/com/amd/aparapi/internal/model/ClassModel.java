@@ -2811,12 +2811,15 @@ public class ClassModel{
 
    // These fields use for accessor conversion
    private final ArrayList<FieldEntry> structMembers = new ArrayList<FieldEntry>();
+   private int structMemberId = 0;
 
    public static class FieldDescriptor implements Comparable<FieldDescriptor> {
        public final TypeSpec typ;
        public final long offset;
+       private final int id;
 
-       public FieldDescriptor(TypeSpec typ, long offset) {
+       public FieldDescriptor(int id, TypeSpec typ, long offset) {
+           this.id = id;
            this.typ = typ;
            this.offset = offset;
        }
@@ -2837,7 +2840,8 @@ public class ClassModel{
 
        @Override
        public int compareTo(FieldDescriptor other) {
-           return (int)this.offset - (int)other.offset;
+           if (this.equals(other)) return 0;
+           else return this.id - other.id;
        }
    }
 
@@ -2866,7 +2870,7 @@ public class ClassModel{
    }
 
    public void addStructMember(long offset, TypeSpec typ) {
-       this.structMemberInfo.add(new FieldDescriptor(typ, offset));
+       this.structMemberInfo.add(new FieldDescriptor(structMemberId++, typ, offset));
    }
 
    public int getTotalStructSize() {

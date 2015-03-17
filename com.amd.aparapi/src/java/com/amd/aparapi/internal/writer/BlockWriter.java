@@ -390,7 +390,13 @@ public abstract class BlockWriter{
             if (descriptor.startsWith("[") || descriptor.startsWith("L")) {
                write(" __global ");
             }
-            write(convertType(descriptor, true));
+
+            String localType = convertType(descriptor, true);
+            if (descriptor.startsWith("L")) {
+              localType = localType.replace('.', '_');
+            }
+            write(localType);
+
             if (descriptor.startsWith("L")) {
               write("*"); // All local assigns to object-typed variables should be a constructor
             }
