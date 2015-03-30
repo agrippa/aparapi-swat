@@ -1,40 +1,3 @@
-/*
-Copyright (c) 2010-2011, Advanced Micro Devices, Inc.
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-following conditions are met:
-
-Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-disclaimer. 
-
-Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
-disclaimer in the documentation and/or other materials provided with the distribution. 
-
-Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products
-derived from this software without specific prior written permission. 
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
-WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-If you use the software (in whole or in part), you shall adhere to all applicable U.S., European, and other export
-laws, including but not limited to the U.S. Export Administration Regulations ("EAR"), (15 C.F.R. Sections 730 through
-774), and E.U. Council Regulation (EC) No 1334/2000 of 22 June 2000.  Further, pursuant to Section 740.6 of the EAR,
-you hereby certify that, except pursuant to a license granted by the United States Department of Commerce Bureau of 
-Industry and Security or as otherwise permitted pursuant to a License Exception under the U.S. Export Administration 
-Regulations ("EAR"), you will not (1) export, re-export or release to a national of a country in Country Groups D:1,
-E:1 or E:2 any restricted technology, software, or source code you receive hereunder, or (2) export to Country Groups
-D:1, E:1 or E:2 the direct product of such technology or software, if such foreign produced direct product is subject
-to national security controls as identified on the Commerce Control List (currently found in Supplement 1 to Part 774
-of EAR).  For the most current Country Group listings, or for additional information about the EAR or your obligations
-under those regulations, please refer to the U.S. Bureau of Industry and Security's website at http://www.bis.doc.gov/. 
-
-*/
 package com.amd.aparapi.internal.model;
 
 import com.amd.aparapi.*;
@@ -46,6 +9,7 @@ import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.reader.*;
 
+import com.amd.aparapi.internal.model.HardCodedClassModel.AllFieldInfo;
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
 
 import java.io.*;
@@ -53,626 +17,36 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.logging.*;
 
-/**
- * Class represents a ClassFile (MyClass.class).
- * 
- * A ClassModel is constructed from an instance of a <code>java.lang.Class</code>.
- * 
- * If the java class mode changes we may need to modify this to accommodate.
- * 
- * @see <a href="http://java.sun.com/docs/books/jvms/second_edition/ClassFileFormat-Java5.pdf">Java 5 Class File Format</a>
-+ * @see <a href="http://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html"> Java 7 Class File Format</a>
- * 
- * @author gfrost
- *
- */
-public class ClassModel{
 
-   public interface LocalVariableInfo{
+public abstract class ClassModel {
 
-      int getStart();
+   public static Map<String, List<HardCodedClassModel>> hardCodedClassModels =
+       new HashMap<String, List<HardCodedClassModel>>();
 
-      boolean isArray();
-
-      int getEnd();
-
-      String getVariableName();
-
-      String getVariableDescriptor();
-
-      int getVariableIndex();
-
-      int getLength();
-
+   public static void addClassModelFor(Class<?> clz, HardCodedClassModel model) {
+       if (!hardCodedClassModels.containsKey(clz.getName())) {
+           hardCodedClassModels.put(clz.getName(), new LinkedList<HardCodedClassModel>());
+       }
+       hardCodedClassModels.get(clz.getName()).add(model);
    }
 
-   public interface LocalVariableTableEntry<T extends LocalVariableInfo> extends Iterable<T>{
-      LocalVariableInfo getVariable(int _pc, int _index);
+   public static HardCodedClassModel getClassModelFor(Class<?> clz) {
+       if (hardCodedClassModels.containsKey(clz.getName())) {
+          for (HardCodedClassModel m : hardCodedClassModels.get(clz.getName())) {
+              if (m.matches()) { //TODO
+                  return m;
+              }
+          }
+       }
 
+       throw new RuntimeException("Unable to find a matching hard coded class " +
+               "model for clz=" + clz.getName());
    }
 
-   public static final char SIGC_VOID = 'V';
-
-   public static final char SIGC_BOOLEAN = 'Z';
-
-   public static final char SIGC_BYTE = 'B';
-
-   public static final char SIGC_CHAR = 'C';
-
-   public static final char SIGC_SHORT = 'S';
-
-   public static final char SIGC_INT = 'I';
-
-   public static final char SIGC_LONG = 'J';
-
-   public static final char SIGC_FLOAT = 'F';
-
-   public static final char SIGC_DOUBLE = 'D';
-
-   public static final char SIGC_ARRAY = '[';
-
-   public static final char SIGC_CLASS = 'L';
-
-   public static final char SIGC_START_METHOD = '(';
-
-   public static final char SIGC_END_CLASS = ';';
-
-   public static final char SIGC_END_METHOD = ')';
-
-   public static final char SIGC_PACKAGE = '/';
-
-   private static Logger logger = Logger.getLogger(Config.getLoggerName());
-
-   private ClassModel superClazz = null;
-
-   //   private Memoizer<Set<String>> noClMethods = Memoizer.of(this::computeNoCLMethods);
-   private Memoizer<Set<String>> noClMethods = Memoizer.Impl.of(new Supplier<Set<String>>(){
-      @Override
-      public Set<String> get() {
-         return computeNoCLMethods();
-      }
-   });
-
-   //   private Memoizer<Map<String, Kernel.PrivateMemorySpace>> privateMemoryFields = Memoizer.of(this::computePrivateMemoryFields);
-   private Memoizer<Map<String, Kernel.PrivateMemorySpace>> privateMemoryFields = Memoizer.Impl
-         .of(new Supplier<Map<String, Kernel.PrivateMemorySpace>>(){
-            @Override
-            public Map<String, Kernel.PrivateMemorySpace> get() {
-               return computePrivateMemoryFields();
-            }
-         });
-
-   //   private ValueCache<String, Integer, ClassParseException> privateMemorySizes = ValueCache.on(this::computePrivateMemorySize);
-   private ValueCache<String, Integer, ClassParseException> privateMemorySizes = ValueCache
-         .on(new ThrowingValueComputer<String, Integer, ClassParseException>(){
-            @Override
-            public Integer compute(String fieldName) throws ClassParseException {
-               return computePrivateMemorySize(fieldName);
-            }
-         });
-
-   /**
-    * Create a ClassModel representing a given Class.
-    * 
-    * The class's classfile must be available from the class's classloader via <code>getClassLoader().getResourceAsStream(name))</code>. 
-    * For dynamic languages creating classes on the fly we may need another approach. 
-    * 
-    * @param _class The class we will extract the model from
-    * @throws ClassParseException
-    */
-
-   private ClassModel(Class<?> _class) throws ClassParseException {
-
-      parse(_class);
-
-      final Class<?> mySuper = _class.getSuperclass();
-      // Find better way to do this check
-      // The java.lang.Object test is for unit test framework to succeed - should 
-      // not occur in normal use
-      if ((mySuper != null) && (!mySuper.getName().equals(Kernel.class.getName()))
-            && (!mySuper.getName().equals("java.lang.Object"))) {
-         superClazz = createClassModel(mySuper);
-      }
-   }
-
-   ClassModel(InputStream _inputStream) throws ClassParseException {
-
-      parse(_inputStream);
-
-   }
-
-   ClassModel(Class<?> _clazz, byte[] _bytes) throws ClassParseException {
-      clazz = _clazz;
-      parse(new ByteArrayInputStream(_bytes));
-   }
-
-   /**
-    * Determine if this is the superclass of some other named class.
-    * 
-    * @param otherClassName The name of the class to compare against
-    * @return true if 'this' a superclass of another named class 
-    */
-   public boolean isSuperClass(String otherClassName) {
-      if (getClassWeAreModelling().getName().equals(otherClassName)) {
-         return true;
-      } else if (superClazz != null) {
-         return superClazz.isSuperClass(otherClassName);
-      } else {
-         return false;
-      }
-   }
-
-   /**
-    * Determine if this is the superclass of some other class.
-    * 
-    * @param other The class to compare against
-    * @return true if 'this' a superclass of another class   
-    */
-   public boolean isSuperClass(Class<?> other) {
-      Class<?> s = other.getSuperclass();
-      while (s != null) {
-         if ((getClassWeAreModelling() == s) || (getClassWeAreModelling().getName().equals(s.getName()))) {
-            return true;
-         }
-         s = s.getSuperclass();
-      }
-      return false;
-   }
-
-   /**
-    * Getter for superClazz
-    * 
-    * @return the superClazz ClassModel 
-    */
-   public ClassModel getSuperClazz() {
-      return superClazz;
-   }
-
-   @DocMe
-   public void replaceSuperClazz(ClassModel c) {
-      if (superClazz != null) {
-         assert c.isSuperClass(getClassWeAreModelling()) == true : "not my super";
-         if (superClazz.getClassWeAreModelling().getName().equals(c.getClassWeAreModelling().getName())) {
-            superClazz = c;
-         } else {
-            superClazz.replaceSuperClazz(c);
-         }
-      }
-   }
-
-   /**
-    * Convert a given JNI character type (say 'I') to its type name ('int').
-    * 
-    * @param _typeChar
-    * @return either a mapped type name or null if no mapping exists.
-    */
-   public static String typeName(char _typeChar) {
-      String returnName = null;
-      switch (_typeChar) {
-         case SIGC_VOID:
-            returnName = "void";
-            break;
-         case SIGC_INT:
-            returnName = "int";
-            break;
-         case SIGC_DOUBLE:
-            returnName = "double";
-            break;
-         case SIGC_FLOAT:
-            returnName = "float";
-            break;
-         case SIGC_SHORT:
-            returnName = "short";
-            break;
-         case SIGC_CHAR:
-            returnName = "char";
-            break;
-         case SIGC_BYTE:
-            returnName = "byte";
-            break;
-         case SIGC_LONG:
-            returnName = "long";
-            break;
-         case SIGC_BOOLEAN:
-            returnName = "boolean";
-            break;
-      }
-
-      return (returnName);
-   }
-
-   /**
-    * If a field does not satisfy the private memory conditions, null, otherwise the size of private memory required.
-    */
-   public Integer getPrivateMemorySize(String fieldName) throws ClassParseException {
-      if (CacheEnabler.areCachesEnabled())
-         return privateMemorySizes.computeIfAbsent(fieldName);
-      return computePrivateMemorySize(fieldName);
-   }
-
-   private Integer computePrivateMemorySize(String fieldName) throws ClassParseException {
-      Kernel.PrivateMemorySpace annotation = privateMemoryFields.get().get(fieldName);
-      if (annotation != null) {
-         return annotation.value();
-      }
-      return getPrivateMemorySizeFromFieldName(fieldName);
-   }
-
-   private Map<String, Kernel.PrivateMemorySpace> computePrivateMemoryFields() {
-      Map<String, Kernel.PrivateMemorySpace> tempPrivateMemoryFields = new HashMap<String, Kernel.PrivateMemorySpace>();
-      Map<Field, Kernel.PrivateMemorySpace> privateMemoryFields = new HashMap<Field, Kernel.PrivateMemorySpace>();
-      for (Field field : getClassWeAreModelling().getDeclaredFields()) {
-         Kernel.PrivateMemorySpace privateMemorySpace = field.getAnnotation(Kernel.PrivateMemorySpace.class);
-         if (privateMemorySpace != null) {
-            privateMemoryFields.put(field, privateMemorySpace);
-         }
-      }
-      for (Field field : getClassWeAreModelling().getFields()) {
-         Kernel.PrivateMemorySpace privateMemorySpace = field.getAnnotation(Kernel.PrivateMemorySpace.class);
-         if (privateMemorySpace != null) {
-            privateMemoryFields.put(field, privateMemorySpace);
-         }
-      }
-      for (Map.Entry<Field, Kernel.PrivateMemorySpace> entry : privateMemoryFields.entrySet()) {
-         tempPrivateMemoryFields.put(entry.getKey().getName(), entry.getValue());
-      }
-      return tempPrivateMemoryFields;
-   }
-
-   public static Integer getPrivateMemorySizeFromField(Field field) {
-      Kernel.PrivateMemorySpace privateMemorySpace = field.getAnnotation(Kernel.PrivateMemorySpace.class);
-      if (privateMemorySpace != null) {
-         return privateMemorySpace.value();
-      } else {
-         return null;
-      }
-   }
-
-   public static Integer getPrivateMemorySizeFromFieldName(String fieldName) throws ClassParseException {
-      if (fieldName.contains(Kernel.PRIVATE_SUFFIX)) {
-         int lastDollar = fieldName.lastIndexOf('$');
-         String sizeText = fieldName.substring(lastDollar + 1);
-         try {
-            return new Integer(Integer.parseInt(sizeText));
-         } catch (NumberFormatException e) {
-            throw new ClassParseException(ClassParseException.TYPE.IMPROPERPRIVATENAMEMANGLING, fieldName);
-         }
-      }
-      return null;
-   }
-
-   public Set<String> getNoCLMethods() {
-      return computeNoCLMethods();
-   }
-
-   private Set<String> computeNoCLMethods() {
-      Set<String> tempNoClMethods = new HashSet<String>();
-      HashSet<Method> methods = new HashSet<Method>();
-      for (Method method : getClassWeAreModelling().getDeclaredMethods()) {
-         if (method.getAnnotation(Kernel.NoCL.class) != null) {
-            methods.add(method);
-         }
-      }
-      for (Method method : getClassWeAreModelling().getMethods()) {
-         if (method.getAnnotation(Kernel.NoCL.class) != null) {
-            methods.add(method);
-         }
-      }
-      for (Method method : methods) {
-         tempNoClMethods.add(method.getName());
-      }
-      return tempNoClMethods;
-   }
-
-   public static String convert(String _string) {
-      return (convert(_string, "", false));
-   }
-
-   public static String convert(String _string, String _insert) {
-      return (convert(_string, _insert, false));
-   }
-
-   public static String convert(String _string, String _insert, boolean _showFullClassName) {
-      Stack<String> stringStack = new Stack<String>();
-      Stack<String> methodStack = null;
-      final int length = _string.length();
-      final char[] chars = _string.toCharArray();
-      int i = 0;
-      boolean inArray = false;
-      boolean inMethod = false;
-      boolean inArgs = false;
-      int args = 0;
-
-      while (i < length) {
-         switch (chars[i]) {
-            case SIGC_CLASS: {
-               final StringBuilder classNameBuffer = new StringBuilder();
-               i++;
-               while ((i < length) && (chars[i] != SIGC_END_CLASS)) {
-                  if (chars[i] == SIGC_PACKAGE) {
-                     classNameBuffer.append('.');
-                  } else {
-                     classNameBuffer.append(chars[i]);
-                  }
-                  i++;
-               }
-               i++; // step over SIGC_ENDCLASS
-               String className = classNameBuffer.toString();
-               if (_showFullClassName) {
-                  if (className.startsWith("java.lang")) {
-                     className = className.substring("java.lang.".length());
-                  }
-               } else {
-                  final int lastDot = className.lastIndexOf('.');
-                  if (lastDot > 0) {
-                     className = className.substring(lastDot + 1);
-                  }
-               }
-               if (inArray) {
-                  // swap the stack items
-                  final String popped = stringStack.pop();
-                  if (inArgs && (args > 0)) {
-                     stringStack.push(", ");
-                  }
-                  stringStack.push(className);
-                  stringStack.push(popped);
-                  inArray = false;
-               } else {
-                  if (inArgs && (args > 0)) {
-                     stringStack.push(", ");
-                  }
-                  stringStack.push(className);
-               }
-               args++;
-            }
-               break;
-            case SIGC_ARRAY: {
-               final StringBuilder arrayDims = new StringBuilder();
-               while ((i < length) && (chars[i] == SIGC_ARRAY)) {
-                  arrayDims.append("[]");
-                  i++;
-               }
-               stringStack.push(arrayDims.toString());
-               inArray = true;
-            }
-               break;
-            case SIGC_VOID:
-            case SIGC_INT:
-            case SIGC_DOUBLE:
-            case SIGC_FLOAT:
-            case SIGC_SHORT:
-            case SIGC_CHAR:
-            case SIGC_BYTE:
-            case SIGC_LONG:
-            case SIGC_BOOLEAN: {
-               if (inArray) {
-                  // swap the stack items
-                  final String popped = stringStack.pop();
-                  if (inArgs && (args > 0)) {
-                     stringStack.push(", ");
-                  }
-                  stringStack.push(typeName(chars[i]));
-                  stringStack.push(popped);
-                  inArray = false;
-               } else {
-                  if (inArgs && (args > 0)) {
-                     stringStack.push(", ");
-                  }
-                  stringStack.push(typeName(chars[i]));
-               }
-               i++; // step over this
-            }
-               break;
-            case SIGC_START_METHOD: {
-               stringStack.push("(");
-               i++; // step over this
-               inArgs = true;
-               args = 0;
-            }
-               break;
-            case SIGC_END_METHOD: {
-               inMethod = true;
-               inArgs = false;
-               stringStack.push(")");
-               methodStack = stringStack;
-               stringStack = new Stack<String>();
-               i++; // step over this
-            }
-               break;
-         }
-      }
-
-      final StringBuilder returnValue = new StringBuilder();
-      for (final String s : stringStack) {
-         returnValue.append(s);
-         returnValue.append(" ");
-
-      }
-
-      if (inMethod) {
-         for (final String s : methodStack) {
-            returnValue.append(s);
-            returnValue.append(" ");
-         }
-      } else {
-         returnValue.append(_insert);
-      }
-
-      return (returnValue.toString());
-   }
-
-   public static class MethodDescription{
-      private final String className;
-
-      private final String methodName;
-
-      private final String type;
-
-      private final String[] args;
-
-      public MethodDescription(String _className, String _methodName, String _type, String[] _args) {
-         methodName = _methodName;
-         className = _className;
-         type = _type;
-         args = _args;
-      }
-
-      public String[] getArgs() {
-         return (args);
-      }
-
-      public String getType() {
-         return (type);
-      }
-
-      public String getClassName() {
-         return (className);
-      }
-
-      public String getMethodName() {
-         return (methodName);
-      }
-   }
-
-   public static MethodDescription getMethodDescription(String _string) {
-      String className = null;
-      String methodName = null;
-      String descriptor = null;
-      MethodDescription methodDescription = null;
-
-      if (_string.startsWith("(")) {
-         className = "?";
-         methodName = "?";
-         descriptor = _string;
-      } else {
-         final int parenIndex = _string.indexOf("(");
-         final int dotIndex = _string.indexOf(".");
-         descriptor = _string.substring(parenIndex);
-         className = _string.substring(0, dotIndex);
-         methodName = _string.substring(dotIndex + 1, parenIndex);
-      }
-
-      Stack<String> stringStack = new Stack<String>();
-      Stack<String> methodStack = null;
-      final int length = descriptor.length();
-      final char[] chars = new char[descriptor.length()];
-      descriptor.getChars(0, descriptor.length(), chars, 0);
-      int i = 0;
-      boolean inArray = false;
-      boolean inMethod = false;
-
-      while (i < length) {
-         switch (chars[i]) {
-            case SIGC_CLASS: {
-               StringBuilder stringBuffer = null;
-               if (inArray) {
-                  stringBuffer = new StringBuilder(stringStack.pop());
-               } else {
-                  stringBuffer = new StringBuilder();
-               }
-               while ((i < length) && (chars[i] != SIGC_END_CLASS)) {
-                  stringBuffer.append(chars[i]);
-                  i++;
-               }
-               stringBuffer.append(chars[i]);
-               i++; // step over SIGC_ENDCLASS
-               stringStack.push(stringBuffer.toString());
-               inArray = false;
-            }
-               break;
-            case SIGC_ARRAY: {
-               final StringBuilder stringBuffer = new StringBuilder();
-               while ((i < length) && (chars[i] == SIGC_ARRAY)) {
-                  stringBuffer.append(chars[i]);
-                  i++;
-               }
-               stringStack.push(stringBuffer.toString());
-               inArray = true;
-            }
-               break;
-            case SIGC_VOID:
-            case SIGC_INT:
-            case SIGC_DOUBLE:
-            case SIGC_FLOAT:
-            case SIGC_SHORT:
-            case SIGC_CHAR:
-            case SIGC_BYTE:
-            case SIGC_LONG:
-            case SIGC_BOOLEAN: {
-               StringBuilder stringBuffer = null;
-               if (inArray) {
-                  stringBuffer = new StringBuilder(stringStack.pop());
-               } else {
-                  stringBuffer = new StringBuilder();
-               }
-               stringBuffer.append(chars[i]);
-               i++; // step over this
-               stringStack.push(stringBuffer.toString());
-               inArray = false;
-            }
-               break;
-            case SIGC_START_METHOD: {
-               i++; // step over this
-            }
-               break;
-            case SIGC_END_METHOD: {
-               inMethod = true;
-               inArray = false;
-               methodStack = stringStack;
-               stringStack = new Stack<String>();
-               i++; // step over this
-            }
-               break;
-         }
-      }
-
-      if (inMethod) {
-         methodDescription = new MethodDescription(className, methodName, stringStack.toArray(new String[0])[0],
-               methodStack.toArray(new String[0]));
-      } else {
-         System.out.println("can't convert to a description");
-      }
-
-      return (methodDescription);
-   }
-
-   //   private static final ValueCache<Class<?>, ClassModel, ClassParseException> classModelCache = ValueCache.onIdentity(ClassModel::new);
-   private static final ValueCache<Class<?>, ClassModel, ClassParseException> classModelCache = ValueCache
-         .on(new ThrowingValueComputer<Class<?>, ClassModel, ClassParseException>(){
-            @Override
-            public ClassModel compute(Class<?> key) throws ClassParseException {
-               return new ClassModel(key);
-            }
-         });
-
-   public static ClassModel createClassModel(Class<?> _class) throws ClassParseException {
-      if (CacheEnabler.areCachesEnabled())
-         return classModelCache.computeIfAbsent(_class);
-
-      return new ClassModel(_class);
-   }
-
-   private int magic;
-
-   private int minorVersion;
-
-   private int majorVersion;
-
-   private ConstantPool constantPool;
-
-   private int accessFlags;
-
-   private int thisClassConstantPoolIndex;
-
-   private int superClassConstantPoolIndex;
-
-   private final List<ClassModelInterface> interfaces = new ArrayList<ClassModelInterface>();
-
-   private final List<ClassModelField> fields = new ArrayList<ClassModelField>();
-
-   private final List<ClassModelMethod> methods = new ArrayList<ClassModelMethod>();
-
-   private AttributePool attributePool;
+   public abstract MethodModel checkForHardCodedMethods(String name, String sig) throws AparapiException;
+   public abstract MethodModel getMethodModel(String _name, String _signature)
+     throws AparapiException;
+   public abstract String getMangledClassName();
 
    public enum ConstantPoolType {
       EMPTY, //0
@@ -2388,8 +1762,6 @@ public class ClassModel{
 
    }
 
-   private static ClassLoader classModelLoader = ClassModel.class.getClassLoader();
-
    public class ClassModelField{
       private final int fieldAccessFlags;
 
@@ -2578,7 +1950,640 @@ public class ClassModel{
 
    }
 
-   private Class<?> clazz;
+   public static class FieldNameInfo {
+       public final String name;
+       public final String desc;
+       public final String className;
+
+       public FieldNameInfo(String name, String desc, String className) {
+           this.name = name;
+           this.desc = desc;
+           this.className = className;
+       }
+   }
+
+   public static class FieldDescriptor implements Comparable<FieldDescriptor> {
+       public final TypeSpec typ;
+       public final long offset;
+       private final int id;
+
+       public FieldDescriptor(int id, TypeSpec typ, long offset) {
+           this.id = id;
+           this.typ = typ;
+           this.offset = offset;
+       }
+
+       @Override
+       public boolean equals(Object obj) {
+           if (obj instanceof FieldDescriptor) {
+               FieldDescriptor other = (FieldDescriptor)obj;
+               return other.typ.equals(this.typ) && other.offset == this.offset;
+           }
+           return false;
+       }
+
+       @Override
+       public int hashCode() {
+           return (int)offset;
+       }
+
+       @Override
+       public int compareTo(FieldDescriptor other) {
+           if (this.equals(other)) return 0;
+           else return this.id - other.id;
+       }
+   }
+
+   public interface LocalVariableInfo{
+
+      int getStart();
+
+      boolean isArray();
+
+      int getEnd();
+
+      String getVariableName();
+
+      String getVariableDescriptor();
+
+      int getVariableIndex();
+
+      int getLength();
+
+   }
+
+   public interface LocalVariableTableEntry<T extends LocalVariableInfo> extends Iterable<T>{
+      LocalVariableInfo getVariable(int _pc, int _index);
+
+   }
+
+   public static final char SIGC_VOID = 'V';
+
+   public static final char SIGC_BOOLEAN = 'Z';
+
+   public static final char SIGC_BYTE = 'B';
+
+   public static final char SIGC_CHAR = 'C';
+
+   public static final char SIGC_SHORT = 'S';
+
+   public static final char SIGC_INT = 'I';
+
+   public static final char SIGC_LONG = 'J';
+
+   public static final char SIGC_FLOAT = 'F';
+
+   public static final char SIGC_DOUBLE = 'D';
+
+   public static final char SIGC_ARRAY = '[';
+
+   public static final char SIGC_CLASS = 'L';
+
+   public static final char SIGC_START_METHOD = '(';
+
+   public static final char SIGC_END_CLASS = ';';
+
+   public static final char SIGC_END_METHOD = ')';
+
+   public static final char SIGC_PACKAGE = '/';
+
+   private static Logger logger = Logger.getLogger(Config.getLoggerName());
+
+   protected ClassModel superClazz = null;
+
+   //   private Memoizer<Set<String>> noClMethods = Memoizer.of(this::computeNoCLMethods);
+   private Memoizer<Set<String>> noClMethods = Memoizer.Impl.of(new Supplier<Set<String>>(){
+      @Override
+      public Set<String> get() {
+         return computeNoCLMethods();
+      }
+   });
+
+   //   private Memoizer<Map<String, Kernel.PrivateMemorySpace>> privateMemoryFields = Memoizer.of(this::computePrivateMemoryFields);
+   private Memoizer<Map<String, Kernel.PrivateMemorySpace>> privateMemoryFields = Memoizer.Impl
+         .of(new Supplier<Map<String, Kernel.PrivateMemorySpace>>(){
+            @Override
+            public Map<String, Kernel.PrivateMemorySpace> get() {
+               return computePrivateMemoryFields();
+            }
+         });
+
+   //   private ValueCache<String, Integer, ClassParseException> privateMemorySizes = ValueCache.on(this::computePrivateMemorySize);
+   private ValueCache<String, Integer, ClassParseException> privateMemorySizes = ValueCache
+         .on(new ThrowingValueComputer<String, Integer, ClassParseException>(){
+            @Override
+            public Integer compute(String fieldName) throws ClassParseException {
+               return computePrivateMemorySize(fieldName);
+            }
+         });
+
+   /**
+    * Create a ClassModel representing a given Class.
+    * 
+    * The class's classfile must be available from the class's classloader via <code>getClassLoader().getResourceAsStream(name))</code>. 
+    * For dynamic languages creating classes on the fly we may need another approach. 
+    * 
+    * @param _class The class we will extract the model from
+    * @throws ClassParseException
+    */
+
+   /**
+    * Determine if this is the superclass of some other named class.
+    * 
+    * @param otherClassName The name of the class to compare against
+    * @return true if 'this' a superclass of another named class 
+    */
+   public boolean isSuperClass(String otherClassName) {
+      if (getClassWeAreModelling().getName().equals(otherClassName)) {
+         return true;
+      } else if (superClazz != null) {
+         return superClazz.isSuperClass(otherClassName);
+      } else {
+         return false;
+      }
+   }
+
+   /**
+    * Determine if this is the superclass of some other class.
+    * 
+    * @param other The class to compare against
+    * @return true if 'this' a superclass of another class   
+    */
+   public boolean isSuperClass(Class<?> other) {
+      Class<?> s = other.getSuperclass();
+      while (s != null) {
+         if ((getClassWeAreModelling() == s) || (getClassWeAreModelling().getName().equals(s.getName()))) {
+            return true;
+         }
+         s = s.getSuperclass();
+      }
+      return false;
+   }
+
+   /**
+    * Getter for superClazz
+    * 
+    * @return the superClazz ClassModel 
+    */
+   public ClassModel getSuperClazz() {
+      return superClazz;
+   }
+
+   @DocMe
+   public void replaceSuperClazz(ClassModel c) {
+      if (superClazz != null) {
+         assert c.isSuperClass(getClassWeAreModelling()) == true : "not my super";
+         if (superClazz.getClassWeAreModelling().getName().equals(c.getClassWeAreModelling().getName())) {
+            superClazz = c;
+         } else {
+            superClazz.replaceSuperClazz(c);
+         }
+      }
+   }
+
+   /**
+    * Convert a given JNI character type (say 'I') to its type name ('int').
+    * 
+    * @param _typeChar
+    * @return either a mapped type name or null if no mapping exists.
+    */
+   public static String typeName(char _typeChar) {
+      String returnName = null;
+      switch (_typeChar) {
+         case SIGC_VOID:
+            returnName = "void";
+            break;
+         case SIGC_INT:
+            returnName = "int";
+            break;
+         case SIGC_DOUBLE:
+            returnName = "double";
+            break;
+         case SIGC_FLOAT:
+            returnName = "float";
+            break;
+         case SIGC_SHORT:
+            returnName = "short";
+            break;
+         case SIGC_CHAR:
+            returnName = "char";
+            break;
+         case SIGC_BYTE:
+            returnName = "byte";
+            break;
+         case SIGC_LONG:
+            returnName = "long";
+            break;
+         case SIGC_BOOLEAN:
+            returnName = "boolean";
+            break;
+      }
+
+      return (returnName);
+   }
+
+   /**
+    * If a field does not satisfy the private memory conditions, null, otherwise the size of private memory required.
+    */
+   public Integer getPrivateMemorySize(String fieldName) throws ClassParseException {
+      if (CacheEnabler.areCachesEnabled())
+         return privateMemorySizes.computeIfAbsent(fieldName);
+      return computePrivateMemorySize(fieldName);
+   }
+
+   private Integer computePrivateMemorySize(String fieldName) throws ClassParseException {
+      Kernel.PrivateMemorySpace annotation = privateMemoryFields.get().get(fieldName);
+      if (annotation != null) {
+         return annotation.value();
+      }
+      return getPrivateMemorySizeFromFieldName(fieldName);
+   }
+
+   private Map<String, Kernel.PrivateMemorySpace> computePrivateMemoryFields() {
+      Map<String, Kernel.PrivateMemorySpace> tempPrivateMemoryFields = new HashMap<String, Kernel.PrivateMemorySpace>();
+      Map<Field, Kernel.PrivateMemorySpace> privateMemoryFields = new HashMap<Field, Kernel.PrivateMemorySpace>();
+      for (Field field : getClassWeAreModelling().getDeclaredFields()) {
+         Kernel.PrivateMemorySpace privateMemorySpace = field.getAnnotation(Kernel.PrivateMemorySpace.class);
+         if (privateMemorySpace != null) {
+            privateMemoryFields.put(field, privateMemorySpace);
+         }
+      }
+      for (Field field : getClassWeAreModelling().getFields()) {
+         Kernel.PrivateMemorySpace privateMemorySpace = field.getAnnotation(Kernel.PrivateMemorySpace.class);
+         if (privateMemorySpace != null) {
+            privateMemoryFields.put(field, privateMemorySpace);
+         }
+      }
+      for (Map.Entry<Field, Kernel.PrivateMemorySpace> entry : privateMemoryFields.entrySet()) {
+         tempPrivateMemoryFields.put(entry.getKey().getName(), entry.getValue());
+      }
+      return tempPrivateMemoryFields;
+   }
+
+   public static Integer getPrivateMemorySizeFromField(Field field) {
+      Kernel.PrivateMemorySpace privateMemorySpace = field.getAnnotation(Kernel.PrivateMemorySpace.class);
+      if (privateMemorySpace != null) {
+         return privateMemorySpace.value();
+      } else {
+         return null;
+      }
+   }
+
+   public static Integer getPrivateMemorySizeFromFieldName(String fieldName) throws ClassParseException {
+      if (fieldName.contains(Kernel.PRIVATE_SUFFIX)) {
+         int lastDollar = fieldName.lastIndexOf('$');
+         String sizeText = fieldName.substring(lastDollar + 1);
+         try {
+            return new Integer(Integer.parseInt(sizeText));
+         } catch (NumberFormatException e) {
+            throw new ClassParseException(ClassParseException.TYPE.IMPROPERPRIVATENAMEMANGLING, fieldName);
+         }
+      }
+      return null;
+   }
+
+   public Set<String> getNoCLMethods() {
+      return computeNoCLMethods();
+   }
+
+   private Set<String> computeNoCLMethods() {
+      Set<String> tempNoClMethods = new HashSet<String>();
+      HashSet<Method> methods = new HashSet<Method>();
+      for (Method method : getClassWeAreModelling().getDeclaredMethods()) {
+         if (method.getAnnotation(Kernel.NoCL.class) != null) {
+            methods.add(method);
+         }
+      }
+      for (Method method : getClassWeAreModelling().getMethods()) {
+         if (method.getAnnotation(Kernel.NoCL.class) != null) {
+            methods.add(method);
+         }
+      }
+      for (Method method : methods) {
+         tempNoClMethods.add(method.getName());
+      }
+      return tempNoClMethods;
+   }
+
+   public static String convert(String _string) {
+      return (convert(_string, "", false));
+   }
+
+   public static String convert(String _string, String _insert) {
+      return (convert(_string, _insert, false));
+   }
+
+   public static String convert(String _string, String _insert, boolean _showFullClassName) {
+      Stack<String> stringStack = new Stack<String>();
+      Stack<String> methodStack = null;
+      final int length = _string.length();
+      final char[] chars = _string.toCharArray();
+      int i = 0;
+      boolean inArray = false;
+      boolean inMethod = false;
+      boolean inArgs = false;
+      int args = 0;
+
+      while (i < length) {
+         switch (chars[i]) {
+            case SIGC_CLASS: {
+               final StringBuilder classNameBuffer = new StringBuilder();
+               i++;
+               while ((i < length) && (chars[i] != SIGC_END_CLASS)) {
+                  if (chars[i] == SIGC_PACKAGE) {
+                     classNameBuffer.append('.');
+                  } else {
+                     classNameBuffer.append(chars[i]);
+                  }
+                  i++;
+               }
+               i++; // step over SIGC_ENDCLASS
+               String className = classNameBuffer.toString();
+               if (_showFullClassName) {
+                  if (className.startsWith("java.lang")) {
+                     className = className.substring("java.lang.".length());
+                  }
+               } else {
+                  final int lastDot = className.lastIndexOf('.');
+                  if (lastDot > 0) {
+                     className = className.substring(lastDot + 1);
+                  }
+               }
+               if (inArray) {
+                  // swap the stack items
+                  final String popped = stringStack.pop();
+                  if (inArgs && (args > 0)) {
+                     stringStack.push(", ");
+                  }
+                  stringStack.push(className);
+                  stringStack.push(popped);
+                  inArray = false;
+               } else {
+                  if (inArgs && (args > 0)) {
+                     stringStack.push(", ");
+                  }
+                  stringStack.push(className);
+               }
+               args++;
+            }
+               break;
+            case SIGC_ARRAY: {
+               final StringBuilder arrayDims = new StringBuilder();
+               while ((i < length) && (chars[i] == SIGC_ARRAY)) {
+                  arrayDims.append("[]");
+                  i++;
+               }
+               stringStack.push(arrayDims.toString());
+               inArray = true;
+            }
+               break;
+            case SIGC_VOID:
+            case SIGC_INT:
+            case SIGC_DOUBLE:
+            case SIGC_FLOAT:
+            case SIGC_SHORT:
+            case SIGC_CHAR:
+            case SIGC_BYTE:
+            case SIGC_LONG:
+            case SIGC_BOOLEAN: {
+               if (inArray) {
+                  // swap the stack items
+                  final String popped = stringStack.pop();
+                  if (inArgs && (args > 0)) {
+                     stringStack.push(", ");
+                  }
+                  stringStack.push(typeName(chars[i]));
+                  stringStack.push(popped);
+                  inArray = false;
+               } else {
+                  if (inArgs && (args > 0)) {
+                     stringStack.push(", ");
+                  }
+                  stringStack.push(typeName(chars[i]));
+               }
+               i++; // step over this
+            }
+               break;
+            case SIGC_START_METHOD: {
+               stringStack.push("(");
+               i++; // step over this
+               inArgs = true;
+               args = 0;
+            }
+               break;
+            case SIGC_END_METHOD: {
+               inMethod = true;
+               inArgs = false;
+               stringStack.push(")");
+               methodStack = stringStack;
+               stringStack = new Stack<String>();
+               i++; // step over this
+            }
+               break;
+         }
+      }
+
+      final StringBuilder returnValue = new StringBuilder();
+      for (final String s : stringStack) {
+         returnValue.append(s);
+         returnValue.append(" ");
+
+      }
+
+      if (inMethod) {
+         for (final String s : methodStack) {
+            returnValue.append(s);
+            returnValue.append(" ");
+         }
+      } else {
+         returnValue.append(_insert);
+      }
+
+      return (returnValue.toString());
+   }
+
+   public static class MethodDescription{
+      private final String className;
+
+      private final String methodName;
+
+      private final String type;
+
+      private final String[] args;
+
+      public MethodDescription(String _className, String _methodName, String _type, String[] _args) {
+         methodName = _methodName;
+         className = _className;
+         type = _type;
+         args = _args;
+      }
+
+      public String[] getArgs() {
+         return (args);
+      }
+
+      public String getType() {
+         return (type);
+      }
+
+      public String getClassName() {
+         return (className);
+      }
+
+      public String getMethodName() {
+         return (methodName);
+      }
+   }
+
+   public static MethodDescription getMethodDescription(String _string) {
+      String className = null;
+      String methodName = null;
+      String descriptor = null;
+      MethodDescription methodDescription = null;
+
+      if (_string.startsWith("(")) {
+         className = "?";
+         methodName = "?";
+         descriptor = _string;
+      } else {
+         final int parenIndex = _string.indexOf("(");
+         final int dotIndex = _string.indexOf(".");
+         descriptor = _string.substring(parenIndex);
+         className = _string.substring(0, dotIndex);
+         methodName = _string.substring(dotIndex + 1, parenIndex);
+      }
+
+      Stack<String> stringStack = new Stack<String>();
+      Stack<String> methodStack = null;
+      final int length = descriptor.length();
+      final char[] chars = new char[descriptor.length()];
+      descriptor.getChars(0, descriptor.length(), chars, 0);
+      int i = 0;
+      boolean inArray = false;
+      boolean inMethod = false;
+
+      while (i < length) {
+         switch (chars[i]) {
+            case SIGC_CLASS: {
+               StringBuilder stringBuffer = null;
+               if (inArray) {
+                  stringBuffer = new StringBuilder(stringStack.pop());
+               } else {
+                  stringBuffer = new StringBuilder();
+               }
+               while ((i < length) && (chars[i] != SIGC_END_CLASS)) {
+                  stringBuffer.append(chars[i]);
+                  i++;
+               }
+               stringBuffer.append(chars[i]);
+               i++; // step over SIGC_ENDCLASS
+               stringStack.push(stringBuffer.toString());
+               inArray = false;
+            }
+               break;
+            case SIGC_ARRAY: {
+               final StringBuilder stringBuffer = new StringBuilder();
+               while ((i < length) && (chars[i] == SIGC_ARRAY)) {
+                  stringBuffer.append(chars[i]);
+                  i++;
+               }
+               stringStack.push(stringBuffer.toString());
+               inArray = true;
+            }
+               break;
+            case SIGC_VOID:
+            case SIGC_INT:
+            case SIGC_DOUBLE:
+            case SIGC_FLOAT:
+            case SIGC_SHORT:
+            case SIGC_CHAR:
+            case SIGC_BYTE:
+            case SIGC_LONG:
+            case SIGC_BOOLEAN: {
+               StringBuilder stringBuffer = null;
+               if (inArray) {
+                  stringBuffer = new StringBuilder(stringStack.pop());
+               } else {
+                  stringBuffer = new StringBuilder();
+               }
+               stringBuffer.append(chars[i]);
+               i++; // step over this
+               stringStack.push(stringBuffer.toString());
+               inArray = false;
+            }
+               break;
+            case SIGC_START_METHOD: {
+               i++; // step over this
+            }
+               break;
+            case SIGC_END_METHOD: {
+               inMethod = true;
+               inArray = false;
+               methodStack = stringStack;
+               stringStack = new Stack<String>();
+               i++; // step over this
+            }
+               break;
+         }
+      }
+
+      if (inMethod) {
+         methodDescription = new MethodDescription(className, methodName, stringStack.toArray(new String[0])[0],
+               methodStack.toArray(new String[0]));
+      } else {
+         System.out.println("can't convert to a description");
+      }
+
+      return (methodDescription);
+   }
+
+   //   private static final ValueCache<Class<?>, ClassModel, ClassParseException> classModelCache = ValueCache.onIdentity(ClassModel::new);
+   private static final ValueCache<Class<?>, ClassModel, ClassParseException> classModelCache = ValueCache
+         .on(new ThrowingValueComputer<Class<?>, ClassModel, ClassParseException>(){
+            @Override
+            public ClassModel compute(Class<?> key) throws ClassParseException {
+               return new LoadedClassModel(key);
+            }
+         });
+
+   public static ClassModel createClassModel(Class<?> _class) throws ClassParseException {
+      if (hardCodedClassModels.containsKey(_class.getName())) {
+        return getClassModelFor(_class);
+      }
+
+      if (CacheEnabler.areCachesEnabled())
+         return classModelCache.computeIfAbsent(_class);
+
+      return new LoadedClassModel(_class);
+   }
+
+   private int magic;
+
+   private int minorVersion;
+
+   private int majorVersion;
+
+   private ConstantPool constantPool;
+
+   private int accessFlags;
+
+   private int thisClassConstantPoolIndex;
+
+   private int superClassConstantPoolIndex;
+
+   private final List<ClassModelInterface> interfaces = new ArrayList<ClassModelInterface>();
+
+   private final List<ClassModelField> fields = new ArrayList<ClassModelField>();
+
+   private final List<ClassModelMethod> methods = new ArrayList<ClassModelMethod>();
+
+   private AttributePool attributePool;
+
+
+   private static ClassLoader classModelLoader = ClassModel.class.getClassLoader();
+
+
+   protected Class<?> clazz;
 
    /**
     * We extract the class's classloader and name and delegate to private parse method.
@@ -2779,77 +2784,16 @@ public class ClassModel{
       return methodOrNull;
    }
 
-   //   private ValueCache<MethodKey, MethodModel, AparapiException> methodModelCache = ValueCache.on(this::computeMethodModel);
-   private ValueCache<MethodKey, MethodModel, AparapiException> methodModelCache = ValueCache
-         .on(new ThrowingValueComputer<MethodKey, MethodModel, AparapiException>(){
-            @Override public MethodModel compute(MethodKey key) throws AparapiException {
-               return computeMethodModel(key);
-            }
-         });
-
-   /**
-    * Create a MethodModel for a given method name and signature.
-    * 
-    * @param _name
-    * @param _signature
-    * @return 
-    * @throws AparapiException
-    */
-   public MethodModel getMethodModel(String _name, String _signature) throws AparapiException {
-      if (CacheEnabler.areCachesEnabled())
-         return methodModelCache.computeIfAbsent(MethodKey.of(_name, _signature));
-      else {
-         final ClassModelMethod method = getMethod(_name, _signature);
-         return new MethodModel(method);
-      }
-   }
-
-   private MethodModel computeMethodModel(MethodKey methodKey) throws AparapiException {
-      final ClassModelMethod method = getMethod(methodKey.getName(), methodKey.getSignature());
-      return new MethodModel(method);
-   }
 
    // These fields use for accessor conversion
-   private final ArrayList<FieldEntry> structMembers = new ArrayList<FieldEntry>();
+   protected final ArrayList<FieldNameInfo> structMembers = new ArrayList<FieldNameInfo>();
    private int structMemberId = 0;
 
-   public static class FieldDescriptor implements Comparable<FieldDescriptor> {
-       public final TypeSpec typ;
-       public final long offset;
-       private final int id;
-
-       public FieldDescriptor(int id, TypeSpec typ, long offset) {
-           this.id = id;
-           this.typ = typ;
-           this.offset = offset;
-       }
-
-       @Override
-       public boolean equals(Object obj) {
-           if (obj instanceof FieldDescriptor) {
-               FieldDescriptor other = (FieldDescriptor)obj;
-               return other.typ.equals(this.typ) && other.offset == this.offset;
-           }
-           return false;
-       }
-
-       @Override
-       public int hashCode() {
-           return (int)offset;
-       }
-
-       @Override
-       public int compareTo(FieldDescriptor other) {
-           if (this.equals(other)) return 0;
-           else return this.id - other.id;
-       }
-   }
-
-   private final TreeSet<FieldDescriptor> structMemberInfo = new TreeSet<FieldDescriptor>();
+   protected final TreeSet<FieldDescriptor> structMemberInfo = new TreeSet<FieldDescriptor>();
 
    private int totalStructSize = 0;
 
-   public ArrayList<FieldEntry> getStructMembers() {
+   public ArrayList<FieldNameInfo> getStructMembers() {
       return structMembers;
    }
 
@@ -2857,7 +2801,7 @@ public class ClassModel{
        return structMemberInfo;
    }
 
-   public FieldEntry getStructMemberFor(FieldDescriptor field) {
+   public FieldNameInfo getStructMemberFor(FieldDescriptor field) {
        int index = 0;
        for (FieldDescriptor d : structMemberInfo) {
            if (d.equals(field)) break;

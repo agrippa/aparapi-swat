@@ -272,18 +272,23 @@ public abstract class KernelWriter extends BlockWriter{
       } else {
          final boolean isSpecial = _methodCall instanceof I_INVOKESPECIAL;
          MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
-         writeAllocCheck =mayFailHeapAllocation.contains(m);
+         writeAllocCheck = mayFailHeapAllocation.contains(m);
 
+         String getterFieldName = null;
          FieldEntry getterField = null;
          if (m != null && m.isGetter()) {
-            getterField = m.getAccessorVariableFieldEntry();
+            getterFieldName = m.getGetterField();
          }
 
-         if (getterField != null) {
+         if (getterFieldName != null) {
+           boolean isObjectField = m.getReturnType().startsWith("L");
+
            if (isThis(_methodCall.getArg(0))) {
-             String fieldName = getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+             String fieldName = getterFieldName;
+             if (isObjectField) write("&(");
              write("this->");
              write(fieldName);
+             if (isObjectField) write(")");
              return false;
            } else if (_methodCall instanceof VirtualMethodCall) {
              VirtualMethodCall virt = (VirtualMethodCall) _methodCall;
@@ -291,8 +296,10 @@ public abstract class KernelWriter extends BlockWriter{
                LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)virt.getInstanceReference();
                LocalVariableInfo info = ld.getLocalVariableInfo();
                if (!info.isArray()) {
-                 String fieldName = getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                 String fieldName = getterFieldName;
+                 if (isObjectField) write("&(");
                  write(info.getVariableName() + "->" + fieldName);
+                 if (isObjectField) write(")");
                  return false;
                }
              }
@@ -407,6 +414,73 @@ public abstract class KernelWriter extends BlockWriter{
      return false;
    }
 
+   private int getSizeOf(String desc) {
+       if (desc.equals("Z")) desc = "B";
+
+       if (desc.startsWith("L")) {
+           for (final ClassModel cm : entryPoint.getObjectArrayFieldsClasses().values()) {
+             String classDesc = "L" + cm.getClassWeAreModelling().getName().replace(".", "/") + ";";
+             if (classDesc.equals(desc)) {
+               return cm.getTotalStructSize();
+             }
+           }
+       }
+
+       return InstructionSet.TypeSpec.valueOf(desc).getSize();
+   }
+
+   private void emitExternalObjectDef(ClassModel cm) {
+
+     final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
+     if (fieldSet.size() > 0) {
+       final String mangledClassName = cm.getMangledClassName();
+       newLine();
+       write("typedef struct " + mangledClassName + "_s{");
+       in();
+       newLine();
+
+       int totalSize = 0;
+       int alignTo = 0;
+
+       final Iterator<FieldNameInfo> it = fieldSet.iterator();
+       while (it.hasNext()) {
+         final FieldNameInfo field = it.next();
+         final String fType = field.desc;
+         final int fSize = getSizeOf(fType);
+
+         if (fSize > alignTo) {
+           alignTo = fSize;
+         }
+         totalSize += fSize;
+
+         final String cType = convertType(field.desc, true);
+         assert cType != null : "could not find type for " + field.desc;
+         writeln(cType + " " + field.name + ";");
+       }
+
+       // compute total size for OpenCL buffer
+       int totalStructSize = 0;
+       if ((totalSize % alignTo) == 0) {
+         totalStructSize = totalSize;
+       } else {
+         // Pad up if necessary
+         totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
+       }
+       if (totalStructSize > alignTo) {
+         while (totalSize < totalStructSize) {
+           // structBuffer.put((byte)-1);
+           writeln("char _pad_" + totalSize + ";");
+           totalSize++;
+         }
+       }
+
+       out();
+       newLine();
+       write("} " + mangledClassName + ";");
+       newLine();
+     }
+   }
+
    @Override public void write(Entrypoint _entryPoint,
          Collection<ScalaParameter> params) throws CodeGenException {
       final List<String> thisStruct = new ArrayList<String>();
@@ -472,10 +546,8 @@ public abstract class KernelWriter extends BlockWriter{
          String className = null;
          if (signature.startsWith("L")) {
             // Turn Lcom/amd/javalabs/opencl/demo/DummyOOA; into com_amd_javalabs_opencl_demo_DummyOOA for example
+            System.err.println("Got className = " + className + " for signature=" + signature);
             className = (signature.substring(1, signature.length() - 1)).replace('/', '_');
-            // if (logger.isLoggable(Level.FINE)) {
-            // logger.fine("Examining object parameter: " + signature + " new: " + className);
-            // }
             argLine.append(className);
             thisStructLine.append(className);
          } else {
@@ -638,56 +710,18 @@ public abstract class KernelWriter extends BlockWriter{
       newLine();
 
       // Emit structs for oop transformation accessors
-      for (final ClassModel cm : _entryPoint.getObjectArrayFieldsClasses().values()) {
-         final ArrayList<FieldEntry> fieldSet = cm.getStructMembers();
-         if (fieldSet.size() > 0) {
-            final String mangledClassName = cm.getClassWeAreModelling().getName().replace('.', '_');
-            newLine();
-            write("typedef struct " + mangledClassName + "_s{");
-            in();
-            newLine();
-
-            int totalSize = 0;
-            int alignTo = 0;
-
-            final Iterator<FieldEntry> it = fieldSet.iterator();
-            while (it.hasNext()) {
-               final FieldEntry field = it.next();
-               final String fType = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-               final int fSize = InstructionSet.TypeSpec.valueOf(fType.equals("Z") ? "B" : fType).getSize();
-
-               if (fSize > alignTo) {
-                  alignTo = fSize;
-               }
-               totalSize += fSize;
-
-               final String cType = convertType(field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8(), true);
-               assert cType != null : "could not find type for " + field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-               writeln(cType + " " + field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + ";");
-            }
-
-            // compute total size for OpenCL buffer
-            int totalStructSize = 0;
-            if ((totalSize % alignTo) == 0) {
-               totalStructSize = totalSize;
-            } else {
-               // Pad up if necessary
-               totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
-            }
-            if (totalStructSize > alignTo) {
-               while (totalSize < totalStructSize) {
-                  // structBuffer.put((byte)-1);
-                  writeln("char _pad_" + totalSize + ";");
-                  totalSize++;
-               }
-            }
-
-            out();
-            newLine();
-            write("} " + mangledClassName + ";");
-            newLine();
-         }
+      List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
+      for (String className : lexicalOrdering) {
+        final ClassModel cm = _entryPoint.getObjectArrayFieldsClasses().get(className);
+        emitExternalObjectDef(cm);
       }
+
+      // for (final Map.Entry<String, List<HardCodedClassModel>> e : ClassModel.hardCodedClassModels.entrySet()) {
+      //    System.err.println("There are " + e.getValue().size() + " class models for " + e.getKey());
+      //    for (HardCodedClassModel model : e.getValue()) {
+      //        emitExternalObjectDef(model);
+      //    }
+      // }
 
       write("typedef struct This_s{");
 
@@ -788,9 +822,12 @@ public abstract class KernelWriter extends BlockWriter{
                if (descriptor.startsWith("L")) {
                  write("__global ");
                }
-               String convertedType = convertType(descriptor, true);
+               final String convertedType;
                if (descriptor.startsWith("L")) {
-                 convertedType = convertedType.replace('.', '_') + "*";
+                 ClassModel cm = entryPoint.getObjectArrayFieldsClasses().get(convertType(descriptor, true).trim());
+                 convertedType = cm.getMangledClassName() + "* ";
+               } else {
+                 convertedType = convertType(descriptor, true);
                }
                write(convertedType);
                write(lvi.getVariableName());
@@ -816,8 +853,8 @@ public abstract class KernelWriter extends BlockWriter{
                newLine();
             }
 
-            write("__global " + p.type.replace('.', '_') + " " + p.name);
-            if (p.dir == ScalaParameter.DIRECTION.OUT) {
+            write("__global " + p.getType().replace('.', '_') + " " + p.getName());
+            if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
                assert(outParam == null);
                outParam = p;
             }
@@ -857,17 +894,17 @@ public abstract class KernelWriter extends BlockWriter{
            newLine();
          }
 
-         if (outParam.clazz != null) {
-           write("__global " + outParam.type.replace('.', '_') + " result = " + _entryPoint.getMethodModel().getName() + "(this");
+         if (outParam.getClazz() != null) {
+           write("__global " + outParam.getType().replace('.', '_') + " result = " + _entryPoint.getMethodModel().getName() + "(this");
          } else {
-           write(outParam.name + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
+           write(outParam.getName() + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
          }
          for (ScalaParameter p : params) {
-           if (p.dir == ScalaParameter.DIRECTION.IN) {
-             if (p.clazz == null) {
-               write(", " + p.name + "[i]");
+           if (p.getDir() == ScalaParameter.DIRECTION.IN) {
+             if (p.getClazz() == null) {
+               write(", " + p.getName() + "[i]");
              } else {
-               write(", " + p.name + " + i");
+               write(", " + p.getName() + " + i");
              }
            }
          }
@@ -891,10 +928,10 @@ public abstract class KernelWriter extends BlockWriter{
            {
              write("processing_succeeded[i] = 1;");
              newLine();
-             if (outParam.clazz != null) {
-                 write(outParam.name + "[i] = *result;");
+             if (outParam.getClazz() != null) {
+                 write(outParam.getName() + "[i] = *result;");
              } else {
-                 write(outParam.name + "[i] = result;");
+                 write(outParam.getName() + "[i] = result;");
              }
            }
            out();

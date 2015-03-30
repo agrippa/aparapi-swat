@@ -734,6 +734,10 @@ public abstract class BlockWriter{
       } else if (_instruction instanceof ConstructorCall) {
         final ConstructorCall call = (ConstructorCall)_instruction;
         writeConstructorCall(call);
+      } else if (_instruction instanceof I_CHECKCAST) {
+        // Do nothing
+        I_CHECKCAST checkCast = (I_CHECKCAST)_instruction;
+        writeInstruction(checkCast.getPrevPC());
       } else {
          throw new CodeGenException(String.format("%s", _instruction.getByteCode().toString().toLowerCase()));
       }
@@ -820,17 +824,48 @@ public abstract class BlockWriter{
          IN, OUT
        }
 
-       public final String type;
-       public final String name;
-       public final Class<?> clazz;
-       public final DIRECTION dir;
+       private final String type;
+       private final String name;
+       private final Class<?> clazz;
+       private final DIRECTION dir;
+       private final Class<?> actualClazz;
+       private final List<String> typeParameters;
 
-       public ScalaParameter(String type,Class<?> clazz, String name,
-           DIRECTION dir) {
-         this.type = type;
+       public ScalaParameter(String type, Class<?> clazz, String name,
+           DIRECTION dir, Class<?> actualClazz) {
+         this.type = type.trim();
          this.clazz = clazz;
          this.name = name;
          this.dir = dir;
+         this.actualClazz = actualClazz;
+         this.typeParameters = new LinkedList<String>();
+       }
+
+       public void addTypeParameter(String s) {
+           typeParameters.add(s);
+       }
+
+       public DIRECTION getDir() {
+           return dir;
+       }
+
+       public String getName() {
+           return name;
+       }
+
+       public Class<?> getClazz() {
+           return clazz;
+       }
+
+       public String getType() {
+           StringBuilder sb = new StringBuilder();
+           sb.append(type.replace('.', '_'));
+           for (String typeParam : typeParameters) {
+               sb.append("_");
+               sb.append(typeParam);
+           }
+           sb.append("*");
+           return sb.toString();
        }
 
        @Override

@@ -671,7 +671,7 @@ public class KernelRunner extends KernelRunnerJNI{
             final long offset = field.offset;
 
             if (logger.isLoggable(Level.FINEST)) {
-               String fieldName = c.getStructMemberFor(field).getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+               String fieldName = c.getStructMemberFor(field).name;
                logger.finest("name = " + fieldName + " t= " + t);
             }
 
