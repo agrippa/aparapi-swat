@@ -828,16 +828,14 @@ public abstract class BlockWriter{
        private final String name;
        private final Class<?> clazz;
        private final DIRECTION dir;
-       private final Class<?> actualClazz;
        private final List<String> typeParameters;
 
        public ScalaParameter(String type, Class<?> clazz, String name,
-           DIRECTION dir, Class<?> actualClazz) {
+           DIRECTION dir) {
          this.type = type.trim();
          this.clazz = clazz;
          this.name = name;
          this.dir = dir;
-         this.actualClazz = actualClazz;
          this.typeParameters = new LinkedList<String>();
        }
 
