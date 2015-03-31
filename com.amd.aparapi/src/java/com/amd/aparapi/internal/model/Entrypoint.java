@@ -829,12 +829,12 @@ public class Entrypoint implements Cloneable {
 
                    // compute total size for OpenCL buffer
                    int totalStructSize = 0;
-                   if ((totalSize % alignTo) == 0) {
+                   // if ((totalSize % alignTo) == 0) {
                       totalStructSize = totalSize;
-                   } else {
-                      // Pad up if necessary
-                      totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
-                   }
+                   // } else {
+                   //    // Pad up if necessary
+                   //    totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
+                   // }
                    c.setTotalStructSize(totalStructSize);
                }
             }
