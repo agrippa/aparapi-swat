@@ -843,6 +843,22 @@ public abstract class BlockWriter{
            typeParameters.add(s);
        }
 
+       public String getTypeParameter(int i) {
+           if (i < typeParameters.size()) {
+               return typeParameters.get(i);
+           } else {
+               return null;
+           }
+       }
+
+       public boolean typeParameterIsObject(int i) {
+           String t = getTypeParameter(i);
+           if (t != null && t.indexOf('.') != -1) {
+               return true;
+           }
+           return false;
+       }
+
        public DIRECTION getDir() {
            return dir;
        }
@@ -862,8 +878,31 @@ public abstract class BlockWriter{
                sb.append("_");
                sb.append(typeParam.replace(".", "_"));
            }
-           sb.append("*");
+           // sb.append("*");
            return sb.toString();
+       }
+
+       private String getParameterStringFor(KernelWriter writer, int field) {
+           final String param;
+           if (!typeParameterIsObject(field)) {
+             param = "__global " + ClassModel.convert(
+                 typeParameters.get(field), "", true) + "* " + name + "_" + (field + 1);
+           } else {
+             param = "__global " + typeParameters.get(field).replace('.',
+                 '_') + "* " + name + "_" + (field + 1);
+           }
+           return param;
+       }
+
+       public String getParameterString(KernelWriter writer) {
+           if (type.equals("scala.Tuple2")) {
+               final String firstParam = getParameterStringFor(writer, 0);
+               final String secondParam = getParameterStringFor(writer, 1);
+               String containerParam = "__global " + getType() + " *" + name;
+               return firstParam + ", " + secondParam + ", " + containerParam;
+           } else {
+               return "__global " + type.replace('.', '_') + "* " + name;
+           }
        }
 
        @Override

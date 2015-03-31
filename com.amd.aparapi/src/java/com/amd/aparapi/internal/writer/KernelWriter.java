@@ -258,11 +258,27 @@ public abstract class KernelWriter extends BlockWriter{
 
    @Override public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       final int argc = _methodEntry.getStackConsumeCount();
+      final String methodName =
+          _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+      final String methodSignature =
+          _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+      final String methodClass =
+          _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
 
-      final String methodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-      final String methodSignature = _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+      if (methodClass.equals("scala/runtime/BoxesRunTime")) {
+          final Set<String> ignorableMethods = new HashSet<String>();
+          ignorableMethods.add("boxToInteger");
 
-      final String barrierAndGetterMappings = javaToCLIdentifierMap.get(methodName + methodSignature);
+          if (ignorableMethods.contains(methodName)) {
+              writeInstruction(_methodCall.getArg(0));
+              return false;
+          } else {
+              throw new RuntimeException("Encountered unknown boxing method " + methodName);
+          }
+      }
+
+      final String barrierAndGetterMappings =
+          javaToCLIdentifierMap.get(methodName + methodSignature);
 
       boolean writeAllocCheck = false;
       if (barrierAndGetterMappings != null) {
@@ -297,10 +313,10 @@ public abstract class KernelWriter extends BlockWriter{
 
            if (isThis(_methodCall.getArg(0))) {
              String fieldName = getterFieldName;
-             if (isObjectField) write("&(");
+             // if (isObjectField) write("&(");
              write("this->");
              write(fieldName);
-             if (isObjectField) write(")");
+             // if (isObjectField) write(")");
              return false;
            } else if (_methodCall instanceof VirtualMethodCall) {
              VirtualMethodCall virt = (VirtualMethodCall) _methodCall;
@@ -312,9 +328,9 @@ public abstract class KernelWriter extends BlockWriter{
                LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)target;
                LocalVariableInfo info = ld.getLocalVariableInfo();
                if (!info.isArray()) {
-                 if (isObjectField) write("(&(");
+                 // if (isObjectField) write("(&(");
                  write(info.getVariableName() + "->" + getterFieldName);
-                 if (isObjectField) write("))");
+                 // if (isObjectField) write("))");
                  return false;
                }
              } else if (target instanceof VirtualMethodCall) {
@@ -460,7 +476,7 @@ public abstract class KernelWriter extends BlockWriter{
 
          String cType = convertType(field.desc, true);
          if (field.desc.startsWith("L")) {
-             cType = cType.replace('.', '_');
+             cType = "__global " + cType.replace('.', '_') + " *";
          }
          assert cType != null : "could not find type for " + field.desc;
          writeln(cType + " " + field.name + ";");
@@ -874,7 +890,7 @@ public abstract class KernelWriter extends BlockWriter{
                newLine();
             }
 
-            write("__global " + p.getType().replace('.', '_') + " " + p.getName());
+            write(p.getParameterString(this));
             if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
                assert(outParam == null);
                outParam = p;
@@ -902,6 +918,15 @@ public abstract class KernelWriter extends BlockWriter{
          writeln(";");
       }
 
+      for (ScalaParameter p : params) {
+        if (p.getDir() == ScalaParameter.DIRECTION.IN) {
+          if (p.getClazz() != null && p.getClazz().getName().equals("scala.Tuple2")) {
+            writeln("__global " + p.getType() + " *my_" + p.getName() + " = " +
+                p.getName() + " + get_global_id(0);");
+          }
+        }
+      }
+
       write("for (; i < N; i += nthreads) {");
       in();
       newLine();
@@ -915,15 +940,39 @@ public abstract class KernelWriter extends BlockWriter{
            newLine();
          }
 
+         for (ScalaParameter p : params) {
+           if (p.getDir() == ScalaParameter.DIRECTION.IN) {
+             if (p.getClazz() != null && p.getClazz().getName().equals("scala.Tuple2")) {
+               if (p.typeParameterIsObject(0)) {
+                   writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1 + i;");
+               } else {
+                   writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[i];");
+               }
+
+               if (p.typeParameterIsObject(1)) {
+                   writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2 + i;");
+               } else {
+                   writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[i];");
+               }
+             }
+           }
+         }
+
          if (outParam.getClazz() != null) {
-           write("__global " + outParam.getType().replace('.', '_') + " result = " + _entryPoint.getMethodModel().getName() + "(this");
+           // write("__global " + outParam.getType().replace('.', '_') + " result = " +
+           //     _entryPoint.getMethodModel().getName() + "(this");
+           write("__global " + outParam.getType() + "* result = " +
+               _entryPoint.getMethodModel().getName() + "(this");
          } else {
            write(outParam.getName() + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
          }
+
          for (ScalaParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
              if (p.getClazz() == null) {
                write(", " + p.getName() + "[i]");
+             } else if (p.getClazz().getName().equals("scala.Tuple2")) {
+               write(", my_" + p.getName());
              } else {
                write(", " + p.getName() + " + i");
              }

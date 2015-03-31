@@ -69,14 +69,14 @@ public class Tuple2ClassModel extends HardCodedClassModel {
                 if (classModel.getFirstTypeDesc().startsWith("L")) {
                   ClassModel cm = writer.getEntryPoint().getObjectArrayFieldsClasses().get(
                       firstType.trim());
-                  firstType = cm.getMangledClassName();
+                  firstType = "__global " + cm.getMangledClassName() + " * ";
                 }
 
                 String secondType = writer.convertType(classModel.getSecondTypeDesc(), true);
                 if (classModel.getSecondTypeDesc().startsWith("L")) {
                   ClassModel cm = writer.getEntryPoint().getObjectArrayFieldsClasses().get(
                       secondType.trim());
-                  secondType = cm.getMangledClassName();
+                  secondType = "__global " + cm.getMangledClassName() + " * ";
                 }
 
                 StringBuilder sb = new StringBuilder();

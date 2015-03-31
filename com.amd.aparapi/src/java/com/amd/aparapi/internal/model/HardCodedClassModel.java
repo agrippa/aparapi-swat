@@ -52,7 +52,10 @@ public abstract class HardCodedClassModel extends ClassModel {
         return false;
     }
 
-    private boolean areSignaturesCompatible(String specific, String broad) {
+    private boolean areSignaturesCompatible(String specific, String broad,
+            String lookingForMethodName) {
+        if (lookingForMethodName.equals("<init>")) return true;
+
         String specificParams = specific.substring(specific.indexOf('(') + 1);
         specificParams = specificParams.substring(0, specificParams.indexOf(')'));
 
@@ -87,7 +90,7 @@ public abstract class HardCodedClassModel extends ClassModel {
             throws AparapiException {
         for (HardCodedMethodModel method : methods) {
             if (method.getOriginalName().equals(_name) &&
-                    areSignaturesCompatible(method.getDescriptor(), _signature)) {
+                    areSignaturesCompatible(method.getDescriptor(), _signature, _name)) {
                 return method;
             }
         }

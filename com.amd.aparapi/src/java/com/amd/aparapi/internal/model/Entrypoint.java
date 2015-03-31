@@ -447,8 +447,11 @@ public class Entrypoint implements Cloneable {
       }
 
       // Look for static call to some other class
-      if ((m == null) && !isMapped && (methodCall instanceof I_INVOKESTATIC)) {
-         String otherClassName = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+      if ((m == null) && !isMapped && (methodCall instanceof I_INVOKESTATIC) &&
+             !methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().equals("scala/runtime/BoxesRunTime")) {
+
+         String otherClassName =
+             methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
          ClassModel otherClassModel = getOrUpdateAllClassAccesses(otherClassName);
 
          //if (logger.isLoggable(Level.FINE)) {
@@ -587,9 +590,7 @@ public class Entrypoint implements Cloneable {
                }
             }
 
-            // System.err.println("Method " + methodModel.getName());
             for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction = instruction.getNextPC()) {
-               // System.err.println("  [" + instruction.toString() + "] " + instruction.getDescription());
 
                if (instruction instanceof AssignToArrayElement) {
                   final AssignToArrayElement assignment = (AssignToArrayElement) instruction;
