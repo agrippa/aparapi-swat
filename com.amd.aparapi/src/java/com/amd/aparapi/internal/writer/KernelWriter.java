@@ -462,13 +462,13 @@ public abstract class KernelWriter extends BlockWriter{
          // Pad up if necessary
          totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
        }
-       if (totalStructSize > alignTo) {
-         while (totalSize < totalStructSize) {
-           // structBuffer.put((byte)-1);
-           writeln("char _pad_" + totalSize + ";");
-           totalSize++;
-         }
-       }
+       // if (totalStructSize > alignTo) {
+       //   while (totalSize < totalStructSize) {
+       //     // structBuffer.put((byte)-1);
+       //     writeln("char _pad_" + totalSize + ";");
+       //     totalSize++;
+       //   }
+       // }
 
        out();
        newLine();
