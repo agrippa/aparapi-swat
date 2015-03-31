@@ -414,21 +414,6 @@ public abstract class KernelWriter extends BlockWriter{
      return false;
    }
 
-   private int getSizeOf(String desc) {
-       if (desc.equals("Z")) desc = "B";
-
-       if (desc.startsWith("L")) {
-           for (final ClassModel cm : entryPoint.getObjectArrayFieldsClasses().values()) {
-             String classDesc = "L" + cm.getClassWeAreModelling().getName().replace(".", "/") + ";";
-             if (classDesc.equals(desc)) {
-               return cm.getTotalStructSize();
-             }
-           }
-       }
-
-       return InstructionSet.TypeSpec.valueOf(desc).getSize();
-   }
-
    private void emitExternalObjectDef(ClassModel cm) {
 
      final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
@@ -446,7 +431,7 @@ public abstract class KernelWriter extends BlockWriter{
        while (it.hasNext()) {
          final FieldNameInfo field = it.next();
          final String fType = field.desc;
-         final int fSize = getSizeOf(fType);
+         final int fSize = entryPoint.getSizeOf(fType);
 
          if (fSize > alignTo) {
            alignTo = fSize;

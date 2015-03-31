@@ -1965,19 +1965,22 @@ public abstract class ClassModel {
    public static class FieldDescriptor implements Comparable<FieldDescriptor> {
        public final TypeSpec typ;
        public final long offset;
+       public final String name;
        private final int id;
 
-       public FieldDescriptor(int id, TypeSpec typ, long offset) {
+       public FieldDescriptor(int id, TypeSpec typ, String name, long offset) {
            this.id = id;
            this.typ = typ;
            this.offset = offset;
+           this.name = name;
        }
 
        @Override
        public boolean equals(Object obj) {
            if (obj instanceof FieldDescriptor) {
                FieldDescriptor other = (FieldDescriptor)obj;
-               return other.typ.equals(this.typ) && other.offset == this.offset;
+               return other.typ.equals(this.typ) &&
+                 other.offset == this.offset && other.name.equals(this.name);
            }
            return false;
        }
@@ -2813,8 +2816,9 @@ public abstract class ClassModel {
        return structMembers.get(index);
    }
 
-   public void addStructMember(long offset, TypeSpec typ) {
-       this.structMemberInfo.add(new FieldDescriptor(structMemberId++, typ, offset));
+   public void addStructMember(long offset, TypeSpec typ, String name) {
+       this.structMemberInfo.add(new FieldDescriptor(structMemberId++, typ,
+             name, offset));
    }
 
    public int getTotalStructSize() {

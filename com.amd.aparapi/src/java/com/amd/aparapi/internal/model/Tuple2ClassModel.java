@@ -40,8 +40,10 @@ public class Tuple2ClassModel extends HardCodedClassModel {
         fields.add(new AllFieldInfo("_2", secondTypeDesc, secondTypeClassName, -1));
 
         List<HardCodedMethodModel> methods = new ArrayList<HardCodedMethodModel>();
-        methods.add(new HardCodedMethodModel("_1$mcI$sp", "()" + firstTypeDesc, "", true, "_1"));
-        methods.add(new HardCodedMethodModel("_2", "()" + secondTypeDesc, "", true, "_2"));
+        methods.add(new HardCodedMethodModel("_1$mcI$sp", "()" + firstTypeDesc,
+              "", true, "_1"));
+        methods.add(new HardCodedMethodModel("_2", "()" + secondTypeDesc, "",
+              true, "_2"));
 
         return new Tuple2ClassModel(firstTypeDesc, secondTypeDesc,
             firstTypeClassName, secondTypeClassName, methods, fields);

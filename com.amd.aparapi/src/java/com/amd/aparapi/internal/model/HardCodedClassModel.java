@@ -16,7 +16,7 @@ public abstract class HardCodedClassModel extends ClassModel {
         int id = 0;
         for (AllFieldInfo f : fields) {
             this.structMembers.add(new FieldNameInfo(f.name, f.desc, f.className));
-            this.structMemberInfo.add(new FieldDescriptor(id, f.typ, f.offset));
+            this.structMemberInfo.add(new FieldDescriptor(id, f.typ, f.name, f.offset));
             id++;
         }
     }
@@ -105,7 +105,7 @@ public abstract class HardCodedClassModel extends ClassModel {
             if (haveTypeSpec) {
                 this.typ = TypeSpec.valueOf(desc);
             } else {
-                this.typ = TypeSpec.UNKNOWN;
+                this.typ = TypeSpec.O;
             }
         }
     }

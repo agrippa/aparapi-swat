@@ -181,16 +181,10 @@ public class Entrypoint implements Cloneable {
       try {
          field = _clazz.getDeclaredField(_name);
          final Class<?> type = field.getType();
-         if (type.isPrimitive() || type.isArray()) {
-            return field;
-         }
          if (field.getAnnotation(Kernel.NoCL.class) != null) {
             return null;
          }
-         if (logger.isLoggable(Level.FINE)) {
-            logger.fine("field type is " + type.getName());
-         }
-         throw new ClassParseException(ClassParseException.TYPE.OBJECTFIELDREFERENCE);
+         return field;
       } catch (final NoSuchFieldException nsfe) {
          // This should be looger fine...
          //System.out.println("no " + _name + " in " + _clazz.getName());
@@ -775,8 +769,8 @@ public class Entrypoint implements Cloneable {
                   final String bType = bb.desc;
 
                   // Booleans get converted down to bytes
-                  final int aSize = InstructionSet.TypeSpec.valueOf(aType.equals("Z") ? "B" : aType).getSize();
-                  final int bSize = InstructionSet.TypeSpec.valueOf(bType.equals("Z") ? "B" : bType).getSize();
+                  final int aSize = getSizeOf(aType);
+                  final int bSize = getSizeOf(bType);
 
                   if (logger.isLoggable(Level.FINEST)) {
                      logger.finest("aType= " + aType + " aSize= " + aSize + " . . bType= " + bType + " bSize= " + bSize);
@@ -793,50 +787,75 @@ public class Entrypoint implements Cloneable {
                }
             };
 
-            for (final ClassModel c : objectArrayFieldsClasses.values()) {
+            for (String className : lexicalOrdering) {
+               final ClassModel c = objectArrayFieldsClasses.get(className);
+
                final ArrayList<FieldNameInfo> fields = c.getStructMembers();
-               if (!c.getClassWeAreModelling().getName().equals("scala.Tuple2") && fields.size() > 0) {
-                  Collections.sort(fields, fieldSizeComparator);
+               if (fields.size() > 0) {
+                   Collections.sort(fields, fieldSizeComparator);
+                   // Now compute the total size for the struct
+                   int alignTo = 0;
+                   int totalSize = 0;
 
-                  // Now compute the total size for the struct
-                  int totalSize = 0;
-                  int alignTo = 0;
+                   if (c.getClassWeAreModelling().getName().equals("scala.Tuple2")) {
 
-                  for (final FieldNameInfo f : fields) {
-                     // Record field offset for use while copying
-                     // Get field we will copy out of the kernel member object
-                     final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.name);
+                      for (final FieldNameInfo f : fields) {
+                         final String fieldType = f.desc;
+                         final int fSize = getSizeOf(fieldType);
+                         if (fSize > alignTo) {
+                            alignTo = fSize;
+                         }
+                         totalSize += fSize;
+                      }
+                   } else {
+                      for (final FieldNameInfo f : fields) {
+                         // Record field offset for use while copying
+                         // Get field we will copy out of the kernel member object
+                         final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.name);
 
-                     long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
-                     final String fieldType = f.desc;
+                         long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
+                         final String fieldType = f.desc;
 
-                     c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType));
+                         c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType), f.name);
 
-                     final int fSize = TypeSpec.valueOf(fieldType.equals("Z") ? "B" : fieldType).getSize();
-                     if (fSize > alignTo) {
-                        alignTo = fSize;
-                     }
+                         final int fSize = getSizeOf(fieldType);
+                         if (fSize > alignTo) {
+                            alignTo = fSize;
+                         }
 
-                     totalSize += fSize;
-                     if (logger.isLoggable(Level.FINEST)) {
-                        logger.finest("Field = " + f.name + " size=" + fSize + " totalSize=" + totalSize);
-                     }
-                  }
+                         totalSize += fSize;
+                      }
+                   }
 
-                  // compute total size for OpenCL buffer
-                  int totalStructSize = 0;
-                  if ((totalSize % alignTo) == 0) {
-                     totalStructSize = totalSize;
-                  } else {
-                     // Pad up if necessary
-                     totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
-                  }
-                  c.setTotalStructSize(totalStructSize);
+                   // compute total size for OpenCL buffer
+                   int totalStructSize = 0;
+                   if ((totalSize % alignTo) == 0) {
+                      totalStructSize = totalSize;
+                   } else {
+                      // Pad up if necessary
+                      totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
+                   }
+                   c.setTotalStructSize(totalStructSize);
                }
             }
          }
 
       }
+   }
+
+   public int getSizeOf(String desc) {
+       if (desc.equals("Z")) desc = "B";
+
+       if (desc.startsWith("L")) {
+           for (final ClassModel cm : getObjectArrayFieldsClasses().values()) {
+             String classDesc = "L" + cm.getClassWeAreModelling().getName().replace(".", "/") + ";";
+             if (classDesc.equals(desc)) {
+               return cm.getTotalStructSize();
+             }
+           }
+       }
+
+       return InstructionSet.TypeSpec.valueOf(desc).getSize();
    }
 
    private boolean noCL(ClassModelMethod m) {
