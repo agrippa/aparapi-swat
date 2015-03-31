@@ -438,7 +438,10 @@ public abstract class KernelWriter extends BlockWriter{
          }
          totalSize += fSize;
 
-         final String cType = convertType(field.desc, true);
+         String cType = convertType(field.desc, true);
+         if (field.desc.startsWith("L")) {
+             cType = cType.replace('.', '_');
+         }
          assert cType != null : "could not find type for " + field.desc;
          writeln(cType + " " + field.name + ";");
        }
@@ -696,9 +699,13 @@ public abstract class KernelWriter extends BlockWriter{
 
       // Emit structs for oop transformation accessors
       List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
+      Set<String> emitted = new HashSet<String>();
       for (String className : lexicalOrdering) {
+        if (emitted.contains(className)) continue;
+
         final ClassModel cm = _entryPoint.getObjectArrayFieldsClasses().get(className);
         emitExternalObjectDef(cm);
+        emitted.add(className);
       }
 
       // for (final Map.Entry<String, List<HardCodedClassModel>> e : ClassModel.hardCodedClassModels.entrySet()) {

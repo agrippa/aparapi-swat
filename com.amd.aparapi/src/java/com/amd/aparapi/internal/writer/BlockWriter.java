@@ -860,7 +860,7 @@ public abstract class BlockWriter{
            sb.append(type.replace('.', '_'));
            for (String typeParam : typeParameters) {
                sb.append("_");
-               sb.append(typeParam);
+               sb.append(typeParam.replace(".", "_"));
            }
            sb.append("*");
            return sb.toString();

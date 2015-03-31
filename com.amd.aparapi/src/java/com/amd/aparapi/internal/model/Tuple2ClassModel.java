@@ -44,6 +44,8 @@ public class Tuple2ClassModel extends HardCodedClassModel {
               "", true, "_1"));
         methods.add(new HardCodedMethodModel("_2", "()" + secondTypeDesc, "",
               true, "_2"));
+        methods.add(new HardCodedMethodModel("_2$mcI$sp", "()" + secondTypeDesc, "",
+              true, "_2"));
 
         return new Tuple2ClassModel(firstTypeDesc, secondTypeDesc,
             firstTypeClassName, secondTypeClassName, methods, fields);
@@ -68,6 +70,6 @@ public class Tuple2ClassModel extends HardCodedClassModel {
 
     @Override
     public String getMangledClassName() {
-        return "scala_Tuple2_" + firstTypeClassName + "_" + secondTypeClassName;
+        return "scala_Tuple2_" + firstTypeClassName.replace(".", "_") + "_" + secondTypeClassName.replace(".", "_");
     }
 }

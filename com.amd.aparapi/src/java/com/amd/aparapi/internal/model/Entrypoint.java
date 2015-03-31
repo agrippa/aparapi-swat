@@ -848,7 +848,7 @@ public class Entrypoint implements Cloneable {
 
        if (desc.startsWith("L")) {
            for (final ClassModel cm : getObjectArrayFieldsClasses().values()) {
-             String classDesc = "L" + cm.getClassWeAreModelling().getName().replace(".", "/") + ";";
+             String classDesc = "L" + cm.getClassWeAreModelling().getName() + ";";
              if (classDesc.equals(desc)) {
                return cm.getTotalStructSize();
              }
