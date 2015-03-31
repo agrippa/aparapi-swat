@@ -399,6 +399,7 @@ public class Entrypoint implements Cloneable {
     */
    ClassModelMethod resolveCalledMethod(MethodCall methodCall, ClassModel classModel) throws AparapiException {
       MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+
       int thisClassIndex = classModel.getThisClassConstantPoolIndex();//arf
       boolean isMapped = (thisClassIndex != methodEntry.getClassIndex()) && Kernel.isMappedMethod(methodEntry);
       if (logger.isLoggable(Level.FINE)) {
@@ -420,13 +421,28 @@ public class Entrypoint implements Cloneable {
 
       // Look for a intra-object call in a object member
       if (m == null && !isMapped) {
+         String targetMethodOwner = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+         final Set<ClassModel> possibleMatches = new HashSet<ClassModel>();
+
          for (ClassModel c : allFieldsClasses.values()) {
-            if (c.getClassWeAreModelling().getName()
-                  .equals(methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.'))) {
+            if (c.getClassWeAreModelling().getName().equals(targetMethodOwner)) {
                m = c.getMethod(methodEntry, (methodCall instanceof I_INVOKESPECIAL) ? true : false);
-               assert m != null;
-               break;
+               // if (m == null) {
+               //     throw new RuntimeException("Expected to find " + methodEntry.toString() + " in  " +
+               //         targetMethodOwner + " but failed");
+               // }
+               // break;
+            } else if (c.classNameMatches(targetMethodOwner)) {
+               possibleMatches.add(c);
             }
+         }
+
+         if (m == null) {
+             for (ClassModel c : possibleMatches) {
+                 m = c.getMethod(methodEntry,
+                     (methodCall instanceof I_INVOKESPECIAL) ? true : false);
+                 if (m != null) break;
+             }
          }
       }
 
@@ -494,7 +510,6 @@ public class Entrypoint implements Cloneable {
 
       // Collect all methods called directly from kernel's run method
       for (final MethodCall methodCall : methodModel.getMethodCalls()) {
-
          ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
          if ((m != null) && !methodMap.keySet().contains(m) && !noCL(m)) {
             final MethodModel target = new LoadedMethodModel(m, this);
@@ -907,6 +922,20 @@ public class Entrypoint implements Cloneable {
       return (classModel);
    }
 
+   private MethodModel lookForHardCodedMethod(MethodEntry _methodEntry, ClassModel classModel) {
+       try {
+           MethodModel hardCoded = classModel.checkForHardCodedMethods(
+               _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(),
+               _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8());
+           if (hardCoded != null) {
+               return hardCoded;
+           }
+       } catch (AparapiException a) {
+           throw new RuntimeException(a);
+       }
+       return null;
+   }
+
    /*
     * Return the best call target MethodModel by looking in the class hierarchy
     * @param _methodEntry MethodEntry for the desired target
@@ -923,33 +952,40 @@ public class Entrypoint implements Cloneable {
       }
 
       final String entryClassNameInDotForm = _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+      final Set<ClassModel> matchingClassModels = new HashSet<ClassModel>();
+
       if (target == null) {
          // Look for member obj accessor calls
          for (final ClassModel memberObjClass : objectArrayFieldsClasses.values()) {
-            if (entryClassNameInDotForm.equals(memberObjClass.getClassWeAreModelling().getName())) {
-               if (logger.isLoggable(Level.FINE)) {
-                  logger.fine("Searching for call target: " + _methodEntry + " in "
-                        + memberObjClass.getClassWeAreModelling().getName());
-               }
-
-               try {
-                   MethodModel hardCoded = memberObjClass.checkForHardCodedMethods(
-                       _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(),
-                       _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8());
-                   if (hardCoded != null) {
-                       return hardCoded;
-                   }
-               } catch (AparapiException a) {
-                   throw new RuntimeException(a);
-               }
-
+           String memberObjClassName = memberObjClass.getClassWeAreModelling().getName();
+           if (memberObjClassName.equals(entryClassNameInDotForm)) {
+               MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
+                   memberObjClass);
+               if (hardCoded != null) return hardCoded;
 
                target = memberObjClass.getMethod(_methodEntry, false);
                if (target != null) {
                   break;
                }
+            } else {
+                if (memberObjClass.classNameMatches(entryClassNameInDotForm)) {
+                    matchingClassModels.add(memberObjClass);
+                }
             }
          }
+      }
+
+      if (target == null) {
+          for (ClassModel possibleMatch : matchingClassModels) {
+               MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
+                   possibleMatch);
+               if (hardCoded != null) return hardCoded;
+
+               target = possibleMatch.getMethod(_methodEntry, false);
+               if (target != null) {
+                  break;
+               }
+          }
       }
 
       if (target != null) {

@@ -134,5 +134,8 @@ public class LoadedClassModel extends ClassModel {
       parse(new ByteArrayInputStream(_bytes));
    }
 
-
+   @Override
+   public boolean classNameMatches(String className) {
+      return getClassWeAreModelling().getName().equals(className);
+   }
 }

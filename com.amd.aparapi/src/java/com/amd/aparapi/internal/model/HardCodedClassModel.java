@@ -21,6 +21,17 @@ public abstract class HardCodedClassModel extends ClassModel {
         }
     }
 
+    // All subclasses must call this at the end of their constructor
+    protected void initMethodOwners() {
+        for (HardCodedMethodModel m : methods) {
+          m.setOwnerMangledName(getMangledClassName());
+        }
+    }
+
+    public List<HardCodedMethodModel> getMethods() {
+      return methods;
+    }
+
     public abstract boolean matches();
     public abstract List<String> getNestedClassNames();
 
@@ -75,7 +86,8 @@ public abstract class HardCodedClassModel extends ClassModel {
     public MethodModel getMethodModel(String _name, String _signature)
             throws AparapiException {
         for (HardCodedMethodModel method : methods) {
-            if (method.getName().equals(_name) && areSignaturesCompatible(method.getDescriptor(), _signature)) {
+            if (method.getOriginalName().equals(_name) &&
+                    areSignaturesCompatible(method.getDescriptor(), _signature)) {
                 return method;
             }
         }

@@ -63,4 +63,9 @@ public class LoadedMethodModel extends MethodModel {
    public String getDescriptor() {
        return method.getDescriptor();
    }
+
+   @Override
+   public String getOwnerClassMangledName() {
+       return getMethod().getOwnerClassModel().getClassWeAreModelling().getName().replace('.', '_');
+   }
 }

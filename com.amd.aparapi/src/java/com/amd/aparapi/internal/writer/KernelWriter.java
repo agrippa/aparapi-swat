@@ -77,6 +77,10 @@ public abstract class KernelWriter extends BlockWriter{
 
    private Entrypoint entryPoint = null;
 
+   public Entrypoint getEntryPoint() {
+     return entryPoint;
+   }
+
    private boolean processingConstructor = false;
 
    private int countAllocs = 0;
@@ -213,13 +217,21 @@ public abstract class KernelWriter extends BlockWriter{
      New newVar = call.getNewVar();
 
      MethodEntry constructorEntry = invokeSpecial.getConstantPoolMethodEntry();
+     final String constructorName =
+         constructorEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+     final String constructorSignature =
+        constructorEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
 
      MethodModel m = entryPoint.getCallTarget(constructorEntry, true);
-     assert(m != null);
+     if (m == null) {
+         throw new RuntimeException("Unable to find constructor for name=" +
+            constructorEntry + " sig=" + constructorSignature);
+     }
+
      write(m.getName());
      write("(");
 
-     String typeName = m.getMethod().getOwnerClassModel().getClassWeAreModelling().getName().replace('.', '_');
+     String typeName = m.getOwnerClassMangledName();
      String allocVarName = "__alloc" + (countAllocs++);
      String allocStr = "__global " + typeName + " * " + allocVarName +
        " = (__global " + typeName + " *)alloc(this->heap, this->free_index, this->heap_size, " + 
@@ -741,6 +753,20 @@ public abstract class KernelWriter extends BlockWriter{
         doesHeapAllocation(mm, mayFailHeapAllocation);
       }
 
+      for (Map.Entry<String, List<HardCodedClassModel>> e :
+          ClassModel.hardCodedClassModels.entrySet()) {
+        for (HardCodedClassModel model : e.getValue()) {
+          for (HardCodedMethodModel method : model.getMethods()) {
+            if (!method.isGetter()) {
+              newLine();
+              write(method.getMethodDef(model, this));
+              newLine();
+              newLine();
+            }
+          }
+        }
+      }
+
       for (final MethodModel mm : merged) {
          // write declaration :)
          if (mm.isPrivateMemoryGetter()) {
@@ -752,7 +778,9 @@ public abstract class KernelWriter extends BlockWriter{
 
          String convertedReturnType = convertType(returnType, true);
          if (returnType.startsWith("L")) {
-           convertedReturnType = convertedReturnType.replace('.', '_');
+           ClassModel cm = entryPoint.getObjectArrayFieldsClasses().get(
+               convertedReturnType.trim());
+           convertedReturnType = cm.getMangledClassName();
          }
 
          if (mm.getSimpleName().equals("<init>")) {
@@ -762,7 +790,7 @@ public abstract class KernelWriter extends BlockWriter{
            processingConstructor = true;
          } else if (returnType.startsWith("L")) {
            write("static __global " + convertedReturnType);
-           write("*");
+           write(" *");
            processingConstructor = false;
          } else {
            // Arrays always map to __private or__global arrays
@@ -816,7 +844,8 @@ public abstract class KernelWriter extends BlockWriter{
                }
                final String convertedType;
                if (descriptor.startsWith("L")) {
-                 ClassModel cm = entryPoint.getObjectArrayFieldsClasses().get(convertType(descriptor, true).trim());
+                 ClassModel cm = entryPoint.getObjectArrayFieldsClasses().get(
+                     convertType(descriptor, true).trim());
                  convertedType = cm.getMangledClassName() + "* ";
                } else {
                  convertedType = convertType(descriptor, true);

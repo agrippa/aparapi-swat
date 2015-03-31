@@ -72,6 +72,8 @@ public abstract class MethodModel {
    }
 
    public abstract String getGetterField();
+   public abstract String getDescriptor();
+   public abstract String getOwnerClassMangledName();
 
    public FieldEntry getAccessorVariableFieldEntry() {
       return accessorVariableFieldEntry;
@@ -1682,8 +1684,6 @@ public abstract class MethodModel {
             .getName().replace('.', '_')
             + "__" + method.getName().replace('<', '_').replace('>', '_'));
    }
-
-   public abstract String getDescriptor();
 
    public String getReturnType() {
       String desc = getDescriptor();

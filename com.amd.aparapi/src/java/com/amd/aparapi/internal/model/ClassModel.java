@@ -47,6 +47,7 @@ public abstract class ClassModel {
    public abstract MethodModel getMethodModel(String _name, String _signature)
      throws AparapiException;
    public abstract String getMangledClassName();
+   public abstract boolean classNameMatches(String className);
 
    public enum ConstantPoolType {
       EMPTY, //0
