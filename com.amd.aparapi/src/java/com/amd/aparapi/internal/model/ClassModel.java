@@ -1979,7 +1979,7 @@ public abstract class ClassModel {
        public boolean equals(Object obj) {
            if (obj instanceof FieldDescriptor) {
                FieldDescriptor other = (FieldDescriptor)obj;
-               return other.typ.equals(this.typ) &&
+               return other.typ == this.typ &&
                  other.offset == this.offset && other.name.equals(this.name);
            }
            return false;
@@ -1994,6 +1994,11 @@ public abstract class ClassModel {
        public int compareTo(FieldDescriptor other) {
            if (this.equals(other)) return 0;
            else return this.id - other.id;
+       }
+
+       @Override
+       public String toString() {
+           return "[\"" + typ + "\", \"" + name + "\", " + offset + ", " + id + "]";
        }
    }
 
@@ -2792,7 +2797,7 @@ public abstract class ClassModel {
    protected final ArrayList<FieldNameInfo> structMembers = new ArrayList<FieldNameInfo>();
    private int structMemberId = 0;
 
-   protected final TreeSet<FieldDescriptor> structMemberInfo = new TreeSet<FieldDescriptor>();
+   protected final List<FieldDescriptor> structMemberInfo = new LinkedList<FieldDescriptor>();
 
    private int totalStructSize = 0;
 
@@ -2800,7 +2805,7 @@ public abstract class ClassModel {
       return structMembers;
    }
 
-   public TreeSet<FieldDescriptor> getStructMemberInfo() {
+   public List<FieldDescriptor> getStructMemberInfo() {
        return structMemberInfo;
    }
 
@@ -2817,8 +2822,15 @@ public abstract class ClassModel {
    }
 
    public void addStructMember(long offset, TypeSpec typ, String name) {
-       this.structMemberInfo.add(new FieldDescriptor(structMemberId++, typ,
-             name, offset));
+       FieldDescriptor newField = new FieldDescriptor(structMemberId, typ,
+             name, offset);
+       for (FieldDescriptor d : structMemberInfo) {
+           if (d.equals(newField)) {
+               return;
+           }
+       }
+       this.structMemberInfo.add(newField);
+       structMemberId++;
    }
 
    public int getTotalStructSize() {
