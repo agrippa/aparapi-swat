@@ -292,16 +292,24 @@ public abstract class KernelWriter extends BlockWriter{
              return false;
            } else if (_methodCall instanceof VirtualMethodCall) {
              VirtualMethodCall virt = (VirtualMethodCall) _methodCall;
-             if (virt.getInstanceReference() instanceof LocalVariableConstIndexLoad) {
-               LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)virt.getInstanceReference();
+             Instruction target = virt.getInstanceReference();
+             if (target instanceof I_CHECKCAST) {
+               target = target.getPrevPC();
+             }
+             if (target instanceof LocalVariableConstIndexLoad) {
+               LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)target;
                LocalVariableInfo info = ld.getLocalVariableInfo();
                if (!info.isArray()) {
-                 String fieldName = getterFieldName;
-                 if (isObjectField) write("&(");
-                 write(info.getVariableName() + "->" + fieldName);
-                 if (isObjectField) write(")");
+                 if (isObjectField) write("(&(");
+                 write(info.getVariableName() + "->" + getterFieldName);
+                 if (isObjectField) write("))");
                  return false;
                }
+             } else if (target instanceof VirtualMethodCall) {
+               VirtualMethodCall nestedCall = (VirtualMethodCall)target;
+               writeMethod(nestedCall, nestedCall.getConstantPoolMethodEntry());
+               write("->" + getterFieldName);
+               return false;
              }
            }
          }
@@ -362,7 +370,7 @@ public abstract class KernelWriter extends BlockWriter{
               assert methodName.equals("<init>");
               writeInstruction(i);
             } else {
-               assert false : "unhandled call to " + _methodEntry + " from: " + i;
+               throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
             }
          }
          for (int arg = 0; arg < argc; arg++) {
@@ -534,7 +542,6 @@ public abstract class KernelWriter extends BlockWriter{
          String className = null;
          if (signature.startsWith("L")) {
             // Turn Lcom/amd/javalabs/opencl/demo/DummyOOA; into com_amd_javalabs_opencl_demo_DummyOOA for example
-            System.err.println("Got className = " + className + " for signature=" + signature);
             className = (signature.substring(1, signature.length() - 1)).replace('/', '_');
             argLine.append(className);
             thisStructLine.append(className);
@@ -707,13 +714,6 @@ public abstract class KernelWriter extends BlockWriter{
         emitExternalObjectDef(cm);
         emitted.add(className);
       }
-
-      // for (final Map.Entry<String, List<HardCodedClassModel>> e : ClassModel.hardCodedClassModels.entrySet()) {
-      //    System.err.println("There are " + e.getValue().size() + " class models for " + e.getKey());
-      //    for (HardCodedClassModel model : e.getValue()) {
-      //        emitExternalObjectDef(model);
-      //    }
-      // }
 
       write("typedef struct This_s{");
 
