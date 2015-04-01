@@ -890,10 +890,12 @@ public abstract class KernelWriter extends BlockWriter{
                newLine();
             }
 
-            write(p.getParameterString(this));
             if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
                assert(outParam == null);
                outParam = p;
+               write(p.getOutputParameterString(this));
+            } else {
+               write(p.getInputParameterString(this));
             }
          }
 
@@ -999,7 +1001,23 @@ public abstract class KernelWriter extends BlockWriter{
              write("processing_succeeded[i] = 1;");
              newLine();
              if (outParam.getClazz() != null) {
-                 write(outParam.getName() + "[i] = *result;");
+                 if (outParam.getClazz().getName().equals("scala.Tuple2")) {
+                     if (outParam.typeParameterIsObject(0)) {
+                         write(outParam.getName() + "_1[i] = *(result->_1);");
+                     } else {
+                         write(outParam.getName() + "_1[i] = result->_1;");
+                     }
+
+                     newLine();
+
+                     if (outParam.typeParameterIsObject(1)) {
+                         write(outParam.getName() + "_2[i] = *(result->_2);");
+                     } else {
+                         write(outParam.getName() + "_2[i] = result->_2;");
+                     }
+                 } else {
+                     write(outParam.getName() + "[i] = *result;");
+                 }
              } else {
                  write(outParam.getName() + "[i] = result;");
              }

@@ -829,6 +829,7 @@ public abstract class BlockWriter{
        private final Class<?> clazz;
        private final DIRECTION dir;
        private final List<String> typeParameters;
+       private final List<Boolean> typeParameterIsObject;
 
        public ScalaParameter(String type, Class<?> clazz, String name,
            DIRECTION dir) {
@@ -837,10 +838,12 @@ public abstract class BlockWriter{
          this.name = name;
          this.dir = dir;
          this.typeParameters = new LinkedList<String>();
+         this.typeParameterIsObject = new LinkedList<Boolean>();
        }
 
-       public void addTypeParameter(String s) {
+       public void addTypeParameter(String s, boolean isObject) {
            typeParameters.add(s);
+           typeParameterIsObject.add(isObject);
        }
 
        public String getTypeParameter(int i) {
@@ -852,9 +855,8 @@ public abstract class BlockWriter{
        }
 
        public boolean typeParameterIsObject(int i) {
-           String t = getTypeParameter(i);
-           if (t != null && t.indexOf('.') != -1) {
-               return true;
+           if (i < typeParameterIsObject.size()) {
+               return typeParameterIsObject.get(i);
            }
            return false;
        }
@@ -894,12 +896,22 @@ public abstract class BlockWriter{
            return param;
        }
 
-       public String getParameterString(KernelWriter writer) {
+       public String getInputParameterString(KernelWriter writer) {
            if (type.equals("scala.Tuple2")) {
                final String firstParam = getParameterStringFor(writer, 0);
                final String secondParam = getParameterStringFor(writer, 1);
                String containerParam = "__global " + getType() + " *" + name;
                return firstParam + ", " + secondParam + ", " + containerParam;
+           } else {
+               return "__global " + type.replace('.', '_') + "* " + name;
+           }
+       }
+
+       public String getOutputParameterString(KernelWriter writer) {
+           if (type.equals("scala.Tuple2")) {
+               final String firstParam = getParameterStringFor(writer, 0);
+               final String secondParam = getParameterStringFor(writer, 1);
+               return firstParam + ", " + secondParam;
            } else {
                return "__global " + type.replace('.', '_') + "* " + name;
            }

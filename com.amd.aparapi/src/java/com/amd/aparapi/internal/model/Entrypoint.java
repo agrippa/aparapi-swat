@@ -817,7 +817,12 @@ public class Entrypoint implements Cloneable {
 
                       for (final FieldNameInfo f : fields) {
                          final String fieldType = f.desc;
-                         final int fSize = getSizeOf(fieldType);
+                         final int fSize;
+                         if (fieldType.startsWith("L")) {
+                           fSize = 8; // TODO safe to hard-code size of pointer on device?
+                         } else {
+                           fSize = getSizeOf(fieldType);
+                         }
                          if (fSize > alignTo) {
                             alignTo = fSize;
                          }
