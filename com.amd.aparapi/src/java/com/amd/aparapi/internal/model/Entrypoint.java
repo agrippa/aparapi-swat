@@ -62,6 +62,12 @@ public class Entrypoint implements Cloneable {
 
    private ClassModel classModel;
 
+   private final HardCodedClassModels hardCodedClassModels;
+
+   public HardCodedClassModels getHardCodedClassModels() {
+       return hardCodedClassModels;
+   }
+
    private Object kernelInstance = null;
 
    private final boolean fallback = false;
@@ -79,6 +85,7 @@ public class Entrypoint implements Cloneable {
    public void addClass(String name) throws AparapiException {
      final ClassModel model = getOrUpdateAllClassAccesses(name);
      objectArrayFieldsClasses.put(name, model);
+     System.err.println("SWAT Adding class " + name + " from addClass");
      lexicalOrdering.add(name);
      allFieldsClasses.put(name, model);
    }
@@ -239,7 +246,7 @@ public class Entrypoint implements Cloneable {
             final Class<?> memberClass = Class.forName(className);
 
             // Immediately add this class and all its supers if necessary
-            memberClassModel = ClassModel.createClassModel(memberClass);
+            memberClassModel = ClassModel.createClassModel(memberClass, this);
 
             if (logger.isLoggable(Level.FINEST)) {
                logger.finest("adding class " + className);
@@ -468,22 +475,30 @@ public class Entrypoint implements Cloneable {
       return m;
    }
 
-   public Entrypoint(ClassModel _classModel, MethodModel _methodModel, Object _k, Collection<ScalaParameter> params) throws AparapiException {
+   public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
+           Object _k, Collection<ScalaParameter> params, HardCodedClassModels setHardCodedClassModels)
+           throws AparapiException {
       classModel = _classModel;
       methodModel = _methodModel;
       kernelInstance = _k;
+      if (setHardCodedClassModels == null) {
+          hardCodedClassModels = new HardCodedClassModels();
+      } else {
+          hardCodedClassModels = setHardCodedClassModels;
+      }
 
-      for (Map.Entry<String, List<HardCodedClassModel>> entry : ClassModel.hardCodedClassModels.entrySet()) {
-          for (HardCodedClassModel model : entry.getValue()) {
-              for (String nestedClass : model.getNestedClassNames()) {
-                  lexicalOrdering.add(nestedClass);
-                  objectArrayFieldsClasses.put(nestedClass, getOrUpdateAllClassAccesses(nestedClass));
-              }
+      for (HardCodedClassModel model : hardCodedClassModels) {
+          for (String nestedClass : model.getNestedClassNames()) {
+              System.err.println("SWAT Adding " + nestedClass + " to lexicalOrdering from Entrypoint constructor");
+              lexicalOrdering.add(nestedClass);
+              objectArrayFieldsClasses.put(nestedClass, getOrUpdateAllClassAccesses(nestedClass));
           }
       }
 
+      System.err.println("SWAT Looking at params " + params);
       if (params != null) {
         for (ScalaParameter p : params) {
+          System.err.println("  " + p.toString());
           if (p.getClazz() != null) {
             addClass(p.getClazz().getName());
           }
@@ -670,13 +685,13 @@ public class Entrypoint implements Cloneable {
                               }
                            }
 
-                           lexicalOrdering.add(className);
                            objectArrayFieldsClasses.put(className, arrayFieldModel);
                            if (logger.isLoggable(Level.FINE)) {
                               logger.fine("adding class to objectArrayFields: " + className);
                            }
                         }
                      }
+                     lexicalOrdering.add(className);
                   } else {
                      final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
                      // Look for object data member access

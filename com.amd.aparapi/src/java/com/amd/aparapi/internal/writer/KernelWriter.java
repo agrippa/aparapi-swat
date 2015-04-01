@@ -451,8 +451,15 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    private void emitExternalObjectDef(ClassModel cm) {
-
      final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
+
+       System.err.println("Looking at " + cm.getClassWeAreModelling().getName() + " " + fieldSet.size());
+
+       for (StackTraceElement ele : Thread.currentThread().getStackTrace()) {
+           System.err.println(ele.toString());
+       }
+       System.err.println();
+
      if (fieldSet.size() > 0) {
        final String mangledClassName = cm.getMangledClassName();
        newLine();
@@ -734,6 +741,9 @@ public abstract class KernelWriter extends BlockWriter{
 
       // Emit structs for oop transformation accessors
       List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
+      System.err.print("lexicalOrdering = ");
+      for (String l : lexicalOrdering) System.err.print(l+" ");
+      System.err.println();
       Set<String> emitted = new HashSet<String>();
       for (String className : lexicalOrdering) {
         if (emitted.contains(className)) continue;
@@ -769,18 +779,15 @@ public abstract class KernelWriter extends BlockWriter{
         doesHeapAllocation(mm, mayFailHeapAllocation);
       }
 
-      for (Map.Entry<String, List<HardCodedClassModel>> e :
-          ClassModel.hardCodedClassModels.entrySet()) {
-        for (HardCodedClassModel model : e.getValue()) {
+      for (HardCodedClassModel model : _entryPoint.getHardCodedClassModels()) {
           for (HardCodedMethodModel method : model.getMethods()) {
-            if (!method.isGetter()) {
-              newLine();
-              write(method.getMethodDef(model, this));
-              newLine();
-              newLine();
-            }
+              if (!method.isGetter()) {
+                  newLine();
+                  write(method.getMethodDef(model, this));
+                  newLine();
+                  newLine();
+              }
           }
-        }
       }
 
       for (final MethodModel mm : merged) {

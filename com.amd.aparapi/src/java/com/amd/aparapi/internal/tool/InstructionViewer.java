@@ -625,7 +625,7 @@ public class InstructionViewer implements Config.InstructionListener{
    public InstructionViewer(Color _background, String _name) {
 
       try {
-         classModel = ClassModel.createClassModel(Class.forName(_name));
+         classModel = ClassModel.createClassModel(Class.forName(_name), null);
       } catch (final ClassParseException e) {
          // TODO Auto-generated catch block
          e.printStackTrace();

@@ -4,8 +4,8 @@ import java.util.Collection;
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
 
 final class EntrypointKey{
-   public static EntrypointKey of(String entrypointName, String descriptor, Collection<ScalaParameter> params) {
-      return new EntrypointKey(entrypointName, descriptor, params);
+   public static EntrypointKey of(String entrypointName, String descriptor, Collection<ScalaParameter> params, HardCodedClassModels models) {
+      return new EntrypointKey(entrypointName, descriptor, params, models);
    }
 
    private String descriptor;
@@ -14,22 +14,30 @@ final class EntrypointKey{
 
    private Collection<ScalaParameter> params;
 
-   private EntrypointKey(String entrypointName, String descriptor, Collection<ScalaParameter> params) {
+   private HardCodedClassModels models;
+
+   private EntrypointKey(String entrypointName, String descriptor,
+           Collection<ScalaParameter> params, HardCodedClassModels models) {
       this.entrypointName = entrypointName;
       this.descriptor = descriptor;
       this.params = params;
+      this.models = models;
    }
 
    String getDescriptor() {
-      return descriptor;
+       return descriptor;
    }
 
    String getEntrypointName() {
-      return entrypointName;
+       return entrypointName;
    }
 
    Collection<ScalaParameter> getParams() {
-     return params;
+       return params;
+   }
+
+   HardCodedClassModels getModels() {
+       return models;
    }
 
    @Override public int hashCode() {

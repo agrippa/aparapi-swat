@@ -119,7 +119,7 @@ public class LoadedClassModel extends ClassModel {
       // not occur in normal use
       if ((mySuper != null) && (!mySuper.getName().equals(Kernel.class.getName()))
             && (!mySuper.getName().equals("java.lang.Object"))) {
-         superClazz = ClassModel.createClassModel(mySuper);
+         superClazz = ClassModel.createClassModel(mySuper, null);
       }
    }
 

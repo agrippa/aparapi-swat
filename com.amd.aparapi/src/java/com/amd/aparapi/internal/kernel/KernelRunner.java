@@ -1037,7 +1037,7 @@ public class KernelRunner extends KernelRunnerJNI{
             if ((entryPoint == null) || (isFallBack)) {
                if (entryPoint == null) {
                   try {
-                     final ClassModel classModel = ClassModel.createClassModel(kernel.getClass());
+                     final ClassModel classModel = ClassModel.createClassModel(kernel.getClass(), null);
                      entryPoint = classModel.getEntrypoint(_entrypointName, kernel);
                   } catch (final Exception exception) {
                      return warnFallBackAndExecute(_entrypointName, _range, _passes, exception);
