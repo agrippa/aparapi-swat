@@ -451,7 +451,7 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    private void emitExternalObjectDef(ClassModel cm) {
-     final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
+       final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
 
        System.err.println("Looking at " + cm.getClassWeAreModelling().getName() + " " + fieldSet.size());
 
@@ -460,56 +460,56 @@ public abstract class KernelWriter extends BlockWriter{
        }
        System.err.println();
 
-     if (fieldSet.size() > 0) {
        final String mangledClassName = cm.getMangledClassName();
        newLine();
-       write("typedef struct " + mangledClassName + "_s{");
+       write("typedef struct __attribute__ ((packed)) " + mangledClassName + "_s{");
        in();
        newLine();
 
-       int totalSize = 0;
-       int alignTo = 0;
+       if (fieldSet.size() > 0) {
+           int totalSize = 0;
+           int alignTo = 0;
 
-       final Iterator<FieldNameInfo> it = fieldSet.iterator();
-       while (it.hasNext()) {
-         final FieldNameInfo field = it.next();
-         final String fType = field.desc;
-         final int fSize = entryPoint.getSizeOf(fType);
+           final Iterator<FieldNameInfo> it = fieldSet.iterator();
+           while (it.hasNext()) {
+               final FieldNameInfo field = it.next();
+               final String fType = field.desc;
+               final int fSize = entryPoint.getSizeOf(fType);
 
-         if (fSize > alignTo) {
-           alignTo = fSize;
-         }
-         totalSize += fSize;
+               if (fSize > alignTo) {
+                   alignTo = fSize;
+               }
+               totalSize += fSize;
 
-         String cType = convertType(field.desc, true);
-         if (field.desc.startsWith("L")) {
-             cType = "__global " + cType.replace('.', '_') + " *";
-         }
-         assert cType != null : "could not find type for " + field.desc;
-         writeln(cType + " " + field.name + ";");
+               String cType = convertType(field.desc, true);
+               if (field.desc.startsWith("L")) {
+                   cType = "__global " + cType.replace('.', '_') + " *";
+               }
+               assert cType != null : "could not find type for " + field.desc;
+               writeln(cType + " " + field.name + ";");
+           }
+
+           // compute total size for OpenCL buffer
+           int totalStructSize = 0;
+           if ((totalSize % alignTo) == 0) {
+               totalStructSize = totalSize;
+           } else {
+               // Pad up if necessary
+               totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
+           }
+           // if (totalStructSize > alignTo) {
+           //   while (totalSize < totalStructSize) {
+           //     // structBuffer.put((byte)-1);
+           //     writeln("char _pad_" + totalSize + ";");
+           //     totalSize++;
+           //   }
+           // }
+
+           out();
+           newLine();
        }
-
-       // compute total size for OpenCL buffer
-       int totalStructSize = 0;
-       if ((totalSize % alignTo) == 0) {
-         totalStructSize = totalSize;
-       } else {
-         // Pad up if necessary
-         totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
-       }
-       // if (totalStructSize > alignTo) {
-       //   while (totalSize < totalStructSize) {
-       //     // structBuffer.put((byte)-1);
-       //     writeln("char _pad_" + totalSize + ";");
-       //     totalSize++;
-       //   }
-       // }
-
-       out();
-       newLine();
        write("} " + mangledClassName + ";");
        newLine();
-     }
    }
 
    @Override public void write(Entrypoint _entryPoint,
