@@ -26,13 +26,11 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
        if (hardCodedClassModels.containsKey(className)) {
            List<HardCodedClassModel> classModels = hardCodedClassModels.get(
                    className);
-           if (classModels.size() != 1) {
-               // TODO implement HardCodedClassModel.matches to work...
-               throw new RuntimeException("Do not support multiple " +
-                       "hard-coded classes of the same top-level type yet, " +
-                       "size=" + classModels.size());
+           for (HardCodedClassModel model : classModels) {
+               if (model.matches()) {
+                   return model;
+               }
            }
-           return classModels.get(0);
        }
        throw new RuntimeException("Unable to find a matching hard coded class " +
                "model for clz=" + className);

@@ -269,6 +269,7 @@ public abstract class KernelWriter extends BlockWriter{
           final Set<String> ignorableMethods = new HashSet<String>();
           ignorableMethods.add("boxToInteger");
           ignorableMethods.add("boxToFloat");
+          ignorableMethods.add("unboxToFloat");
 
           if (ignorableMethods.contains(methodName)) {
               writeInstruction(_methodCall.getArg(0));

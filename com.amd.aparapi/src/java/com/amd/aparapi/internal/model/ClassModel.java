@@ -2534,6 +2534,7 @@ public abstract class ClassModel {
    public static ClassModel createClassModel(Class<?> _class,
            Entrypoint entryPoint) throws ClassParseException {
       if (entryPoint != null && entryPoint.getHardCodedClassModels().hasClassModelFor(_class.getName())) {
+          System.err.println("Creating class model for " + _class.getName());
           return entryPoint.getHardCodedClassModels().getClassModelFor(_class.getName());
       }
 

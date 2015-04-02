@@ -82,8 +82,8 @@ public class Entrypoint implements Cloneable {
    private final HashMap<String, ClassModel> objectArrayFieldsClasses = new HashMap<String, ClassModel>();
    private final List<String> lexicalOrdering = new LinkedList<String>();
 
-   public void addClass(String name) throws AparapiException {
-     final ClassModel model = getOrUpdateAllClassAccesses(name);
+   private void addClass(String name) throws AparapiException {
+     final ClassModel model = getOrUpdateAllClassAccesses(name); // Can get generic types from caller ScalaParameter
      objectArrayFieldsClasses.put(name, model);
      lexicalOrdering.add(name);
      allFieldsClasses.put(name, model);
@@ -284,6 +284,7 @@ public class Entrypoint implements Cloneable {
 
    public ClassModelMethod resolveAccessorCandidate(MethodCall _methodCall, MethodEntry _methodEntry) throws AparapiException {
       final String methodsActualClassName = (_methodEntry.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
+      System.err.println("_methodCall = " + _methodCall.toString() + " _methodEntry = " + _methodEntry.toString());
 
       if (_methodCall instanceof VirtualMethodCall) {
          final Instruction callInstance = ((VirtualMethodCall) _methodCall).getInstanceReference();
@@ -433,11 +434,6 @@ public class Entrypoint implements Cloneable {
          for (ClassModel c : allFieldsClasses.values()) {
             if (c.getClassWeAreModelling().getName().equals(targetMethodOwner)) {
                m = c.getMethod(methodEntry, (methodCall instanceof I_INVOKESPECIAL) ? true : false);
-               // if (m == null) {
-               //     throw new RuntimeException("Expected to find " + methodEntry.toString() + " in  " +
-               //         targetMethodOwner + " but failed");
-               // }
-               // break;
             } else if (c.classNameMatches(targetMethodOwner)) {
                possibleMatches.add(c);
             }
