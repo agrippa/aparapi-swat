@@ -268,6 +268,7 @@ public abstract class KernelWriter extends BlockWriter{
       if (methodClass.equals("scala/runtime/BoxesRunTime")) {
           final Set<String> ignorableMethods = new HashSet<String>();
           ignorableMethods.add("boxToInteger");
+          ignorableMethods.add("boxToFloat");
 
           if (ignorableMethods.contains(methodName)) {
               writeInstruction(_methodCall.getArg(0));
