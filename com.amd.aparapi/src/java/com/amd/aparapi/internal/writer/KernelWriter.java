@@ -453,13 +453,6 @@ public abstract class KernelWriter extends BlockWriter{
    private void emitExternalObjectDef(ClassModel cm) {
        final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
 
-       System.err.println("Looking at " + cm.getClassWeAreModelling().getName() + " " + fieldSet.size());
-
-       for (StackTraceElement ele : Thread.currentThread().getStackTrace()) {
-           System.err.println(ele.toString());
-       }
-       System.err.println();
-
        final String mangledClassName = cm.getMangledClassName();
        newLine();
        write("typedef struct __attribute__ ((packed)) " + mangledClassName + "_s{");
@@ -741,9 +734,6 @@ public abstract class KernelWriter extends BlockWriter{
 
       // Emit structs for oop transformation accessors
       List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
-      System.err.print("lexicalOrdering = ");
-      for (String l : lexicalOrdering) System.err.print(l+" ");
-      System.err.println();
       Set<String> emitted = new HashSet<String>();
       for (String className : lexicalOrdering) {
         if (emitted.contains(className)) continue;
