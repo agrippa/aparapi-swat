@@ -85,7 +85,6 @@ public class Entrypoint implements Cloneable {
    public void addClass(String name) throws AparapiException {
      final ClassModel model = getOrUpdateAllClassAccesses(name);
      objectArrayFieldsClasses.put(name, model);
-     System.err.println("SWAT Adding class " + name + " from addClass");
      lexicalOrdering.add(name);
      allFieldsClasses.put(name, model);
    }
@@ -489,16 +488,13 @@ public class Entrypoint implements Cloneable {
 
       for (HardCodedClassModel model : hardCodedClassModels) {
           for (String nestedClass : model.getNestedClassNames()) {
-              System.err.println("SWAT Adding " + nestedClass + " to lexicalOrdering from Entrypoint constructor");
               lexicalOrdering.add(nestedClass);
               objectArrayFieldsClasses.put(nestedClass, getOrUpdateAllClassAccesses(nestedClass));
           }
       }
 
-      System.err.println("SWAT Looking at params " + params);
       if (params != null) {
         for (ScalaParameter p : params) {
-          System.err.println("  " + p.toString());
           if (p.getClazz() != null) {
             addClass(p.getClazz().getName());
           }
