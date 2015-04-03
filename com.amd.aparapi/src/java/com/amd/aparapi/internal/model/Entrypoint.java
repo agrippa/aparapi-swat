@@ -82,8 +82,8 @@ public class Entrypoint implements Cloneable {
    private final HashMap<String, ClassModel> objectArrayFieldsClasses = new HashMap<String, ClassModel>();
    private final List<String> lexicalOrdering = new LinkedList<String>();
 
-   private void addClass(String name) throws AparapiException {
-     final ClassModel model = getOrUpdateAllClassAccesses(name); // Can get generic types from caller ScalaParameter
+   private void addClass(String name, String[] desc) throws AparapiException {
+     final ClassModel model = getOrUpdateAllClassAccesses(name, desc);
      objectArrayFieldsClasses.put(name, model);
      lexicalOrdering.add(name);
      allFieldsClasses.put(name, model);
@@ -238,14 +238,14 @@ public class Entrypoint implements Cloneable {
     * It is important to have only one ClassModel for each class used in the kernel
     * and only one MethodModel per method, so comparison operations work properly.
     */
-   public ClassModel getOrUpdateAllClassAccesses(String className) throws AparapiException {
+   public ClassModel getOrUpdateAllClassAccesses(String className, String[] desc) throws AparapiException {
       ClassModel memberClassModel = allFieldsClasses.get(className);
       if (memberClassModel == null) {
          try {
             final Class<?> memberClass = Class.forName(className);
 
             // Immediately add this class and all its supers if necessary
-            memberClassModel = ClassModel.createClassModel(memberClass, this);
+            memberClassModel = ClassModel.createClassModel(memberClass, this, desc);
 
             if (logger.isLoggable(Level.FINEST)) {
                logger.finest("adding class " + className);
@@ -492,7 +492,7 @@ public class Entrypoint implements Cloneable {
       if (params != null) {
         for (ScalaParameter p : params) {
           if (p.getClazz() != null) {
-            addClass(p.getClazz().getName());
+            addClass(p.getClazz().getName(), p.getDescArray());
           }
         }
       }

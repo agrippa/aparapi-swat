@@ -22,26 +22,19 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
        return getClassModelFor(clz.getName());
     }
 
-    public HardCodedClassModel getClassModelFor(String className) {
+    public HardCodedClassModel getClassModelFor(String className,
+          String[] desc) {
        if (hardCodedClassModels.containsKey(className)) {
            List<HardCodedClassModel> classModels = hardCodedClassModels.get(
                    className);
            for (HardCodedClassModel model : classModels) {
-               if (model.matches()) {
+               if (model.matches(desc)) {
                    return model;
                }
            }
        }
        throw new RuntimeException("Unable to find a matching hard coded class " +
                "model for clz=" + className);
-    }
-
-    public boolean hasClassModelFor(String className) {
-        /*
-         * TODO this will have to account for multiple classes for the same
-         * top-level class name
-         */
-        return hardCodedClassModels.containsKey(className);
     }
 
     @Override

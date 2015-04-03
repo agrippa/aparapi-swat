@@ -32,7 +32,7 @@ public abstract class HardCodedClassModel extends ClassModel {
       return methods;
     }
 
-    public abstract boolean matches();
+    public abstract boolean matches(String[] desc);
     public abstract List<String> getNestedClassNames();
 
     @Override

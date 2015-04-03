@@ -846,6 +846,16 @@ public abstract class BlockWriter{
            typeParameterIsObject.add(isObject);
        }
 
+       public String[] getDescArray() {
+           String[] arr = new String[typeParameters.size()];
+           int index = 0;
+           for (String param : typeParameters) {
+               arr[index] = param;
+               index++;
+           }
+           return arr;
+       }
+
        public String getTypeParameter(int i) {
            if (i < typeParameters.size()) {
                return typeParameters.get(i);
