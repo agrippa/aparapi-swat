@@ -78,6 +78,9 @@ import com.amd.aparapi.opencl.OpenCL;
 
 import com.amd.aparapi.internal.writer.BlockWriter;
 
+import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
+import com.amd.aparapi.internal.model.ClassModel.ClassModelMatcher;
+
 /**
  * The class is responsible for executing <code>Kernel</code> implementations. <br/>
  * 
@@ -613,7 +616,13 @@ public class KernelRunner extends KernelRunnerJNI{
          }
 
          // get ClassModel of obj array from entrypt.objectArrayFieldsClasses
-         c = entryPoint.getObjectArrayFieldsClasses().get(arrayClassInDotForm);
+         c = entryPoint.getModelFromObjectArrayFieldsClasses(arrayClassInDotForm, new ClassModelMatcher() {
+             @Override
+             public boolean matches(ClassModel model) {
+                // TODO
+                return false;
+             }
+         });
          arg.setObjArrayElementModel(c);
       } else {
          c = arg.getObjArrayElementModel();
@@ -1037,7 +1046,8 @@ public class KernelRunner extends KernelRunnerJNI{
             if ((entryPoint == null) || (isFallBack)) {
                if (entryPoint == null) {
                   try {
-                     final ClassModel classModel = ClassModel.createClassModel(kernel.getClass(), null);
+                     final ClassModel classModel = ClassModel.createClassModel(
+                         kernel.getClass(), null, new ShouldNotCallMatcher());
                      entryPoint = classModel.getEntrypoint(_entrypointName, kernel);
                   } catch (final Exception exception) {
                      return warnFallBackAndExecute(_entrypointName, _range, _passes, exception);

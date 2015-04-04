@@ -1,17 +1,22 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.List;
+import java.util.LinkedList;
+import java.util.Iterator;
 
 import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 
 public abstract class HardCodedClassModel extends ClassModel {
     private final List<HardCodedMethodModel> methods;
+    protected final TypeParameters paramDescs;
 
     public HardCodedClassModel(Class<?> clazz,
-            List<HardCodedMethodModel> methods, List<AllFieldInfo> fields) {
+            List<HardCodedMethodModel> methods, List<AllFieldInfo> fields,
+            String... paramDescs) {
         this.clazz = clazz;
         this.methods = methods;
+        this.paramDescs = new TypeParameters(paramDescs);
 
         int id = 0;
         for (AllFieldInfo f : fields) {
@@ -28,15 +33,19 @@ public abstract class HardCodedClassModel extends ClassModel {
         }
     }
 
+    public TypeParameters getTypeParamDescs() {
+        return paramDescs;
+    }
+
     public List<HardCodedMethodModel> getMethods() {
       return methods;
     }
 
-    public abstract boolean matches(String[] desc);
-    public abstract List<String> getNestedClassNames();
+    public abstract List<String> getNestedTypeDescs();
 
     @Override
-    public MethodModel checkForHardCodedMethods(String name, String desc) throws AparapiException {
+    public MethodModel checkForHardCodedMethods(String name, String desc)
+        throws AparapiException {
       return getMethodModel(name, desc);
     }
 
@@ -54,7 +63,9 @@ public abstract class HardCodedClassModel extends ClassModel {
 
     private boolean areSignaturesCompatible(String specific, String broad,
             String lookingForMethodName) {
-        if (lookingForMethodName.equals("<init>")) return true;
+        if (lookingForMethodName.equals("<init>")) {
+            return true;
+        }
 
         String specificParams = specific.substring(specific.indexOf('(') + 1);
         specificParams = specificParams.substring(0, specificParams.indexOf(')'));
@@ -122,6 +133,79 @@ public abstract class HardCodedClassModel extends ClassModel {
             } else {
                 this.typ = TypeSpec.O;
             }
+        }
+    }
+
+    public static class TypeParameters implements Comparable<TypeParameters>, Iterable<String> {
+        private final List<String> paramDescs = new LinkedList<String>();
+
+        public TypeParameters(String... paramDescs) {
+            for (String d : paramDescs) {
+                this.paramDescs.add(d);
+            }
+        }
+
+        public TypeParameters(List<String> paramDescs) {
+            for (String d : paramDescs) {
+                this.paramDescs.add(d);
+            }
+        }
+
+        public String get(int index) {
+            return paramDescs.get(index);
+        }
+
+        public int size() {
+            return paramDescs.size();
+        }
+
+        @Override
+        public Iterator<String> iterator() {
+            return paramDescs.iterator();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof TypeParameters) {
+                TypeParameters other = (TypeParameters)obj;
+                Iterator<String> otherIter = other.paramDescs.iterator();
+                Iterator<String> thisIter = paramDescs.iterator();
+                while (otherIter.hasNext() && thisIter.hasNext()) {
+                    String otherEle = otherIter.next();
+                    String thisEle = thisIter.next();
+                    if (!otherEle.equals(thisEle)) {
+                        return false;
+                    }
+                }
+
+                if (otherIter.hasNext() != thisIter.hasNext()) {
+                    return false;
+                }
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public int compareTo(TypeParameters other) {
+            if (this.equals(other)) return 0;
+            return paramDescs.get(0).compareTo(other.paramDescs.get(0));
+        }
+
+        @Override
+        public int hashCode() {
+            return paramDescs.size();
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("[ ");
+            for (String p : paramDescs) {
+                sb.append(p + " ");
+            }
+            sb.append("]");
+            return sb.toString();
         }
     }
 }

@@ -9,7 +9,10 @@ import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.reader.*;
 
+import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
 import com.amd.aparapi.internal.model.HardCodedClassModel.AllFieldInfo;
+import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
+import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
 
 import java.io.*;
@@ -916,6 +919,8 @@ public abstract class ClassModel {
    public class AttributePool{
       private final List<AttributePoolEntry> attributePoolEntries = new ArrayList<AttributePoolEntry>();
 
+      public int size() { return attributePoolEntries.size(); }
+
       public class CodeEntry extends AttributePoolEntry{
 
          public class ExceptionPoolEntry{
@@ -1212,6 +1217,10 @@ public abstract class ClassModel {
 
          int getSignatureIndex() {
             return (signatureIndex);
+         }
+
+         public String getSignature() {
+            return (constantPool.getUTF8Entry(signatureIndex).getUTF8());
          }
       }
 
@@ -1594,6 +1603,8 @@ public abstract class ClassModel {
 
       private BootstrapMethodsEntry bootstrapMethodsEntry = null;
 
+      private SignatureEntry signatureEntry = null;
+
       private final static String LOCALVARIABLETABLE_TAG = "LocalVariableTable";
 
       private final static String CONSTANTVALUE_TAG = "ConstantValue";
@@ -1669,7 +1680,8 @@ public abstract class ClassModel {
                enclosingMethodEntry = new EnclosingMethodEntry(_byteReader, attributeNameIndex, length);
                entry = enclosingMethodEntry;
             } else if (attributeName.equals(SIGNATURE_TAG)) {
-               entry = new SignatureEntry(_byteReader, attributeNameIndex, length);
+               signatureEntry = new SignatureEntry(_byteReader, attributeNameIndex, length);
+               entry = signatureEntry;
             } else if (attributeName.equals(RUNTIMEINVISIBLEANNOTATIONS_TAG)) {
                runtimeInvisibleAnnotationsEntry = new RuntimeAnnotationsEntry(_byteReader, attributeNameIndex, length);
                entry = runtimeInvisibleAnnotationsEntry;
@@ -1696,6 +1708,10 @@ public abstract class ClassModel {
             attributePoolEntries.add(entry);
 
          }
+      }
+
+      public SignatureEntry getSignatureEntry() {
+         return (signatureEntry);
       }
 
       public CodeEntry getCodeEntry() {
@@ -2532,11 +2548,12 @@ public abstract class ClassModel {
          });
 
    public static ClassModel createClassModel(Class<?> _class,
-           Entrypoint entryPoint, String[] desc) throws ClassParseException {
+           Entrypoint entryPoint, HardCodedClassModelMatcher matcher)
+           throws ClassParseException {
       HardCodedClassModel hardCoded = null;
       if (entryPoint != null) {
          hardCoded = entryPoint.getHardCodedClassModels().getClassModelFor(
-             _class.getName(), desc);
+             _class.getName(), matcher);
          if (hardCoded != null) return hardCoded;
       }
 
@@ -2868,5 +2885,34 @@ public abstract class ClassModel {
 
    @Override public String toString() {
       return "ClassModel of " + getClassWeAreModelling();
+   }
+
+   public static ClassModelMatcher wrap(final String className,
+           final HardCodedClassModelMatcher other) {
+       return new ClassModelMatcher() {
+          @Override
+          public boolean matches(ClassModel model) {
+              if (model instanceof HardCodedClassModel) {
+                  return other.matches((HardCodedClassModel)model);
+              } else {
+                  return model.getClassWeAreModelling().getName().equals(className);
+              }
+          }
+       };
+   }
+
+   public abstract static class ClassModelMatcher {
+       public abstract boolean matches(ClassModel model);
+   }
+
+   public static class NameMatcher extends ClassModelMatcher {
+      private final String className;
+      public NameMatcher(String className) {
+          this.className = className;
+      }
+      @Override
+      public boolean matches(ClassModel model) {
+          return model.getClassWeAreModelling().getName().equals(className);
+      }
    }
 }

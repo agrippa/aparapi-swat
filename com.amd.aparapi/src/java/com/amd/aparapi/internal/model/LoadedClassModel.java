@@ -47,6 +47,7 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.reader.*;
 
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
+import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
 
 import java.io.*;
 import java.lang.reflect.*;
@@ -119,7 +120,7 @@ public class LoadedClassModel extends ClassModel {
       // not occur in normal use
       if ((mySuper != null) && (!mySuper.getName().equals(Kernel.class.getName()))
             && (!mySuper.getName().equals("java.lang.Object"))) {
-         superClazz = ClassModel.createClassModel(mySuper, null);
+         superClazz = ClassModel.createClassModel(mySuper, null, new ShouldNotCallMatcher());
       }
    }
 

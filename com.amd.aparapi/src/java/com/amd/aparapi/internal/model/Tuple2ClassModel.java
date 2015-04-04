@@ -10,11 +10,6 @@ import com.amd.aparapi.internal.model.HardCodedMethodModel.MethodDefGenerator;
 import com.amd.aparapi.internal.writer.KernelWriter;
 
 public class Tuple2ClassModel extends HardCodedClassModel {
-    private final String firstTypeDesc;
-    private final String secondTypeDesc;
-    private final String firstTypeClassName;
-    private final String secondTypeClassName;
-
     private static Class<?> clz;
     static {
         try {
@@ -25,59 +20,67 @@ public class Tuple2ClassModel extends HardCodedClassModel {
     }
 
     private Tuple2ClassModel(String firstTypeDesc, String secondTypeDesc,
-            String firstTypeClassName, String secondTypeClassName,
             List<HardCodedMethodModel> methods, List<AllFieldInfo> fields) {
-        super(clz, methods, fields);
-        this.firstTypeDesc = firstTypeDesc;
-        this.secondTypeDesc = secondTypeDesc;
-        this.firstTypeClassName = firstTypeClassName;
-        this.secondTypeClassName = secondTypeClassName;
+        super(clz, methods, fields, firstTypeDesc, secondTypeDesc);
         initMethodOwners();
     }
 
     public String getFirstTypeDesc() {
-      return firstTypeDesc;
+      return paramDescs.get(0);
     }
 
     public String getSecondTypeDesc() {
-      return secondTypeDesc;
+      return paramDescs.get(1);
     }
 
-    public String getFirstTypeClassName() {
-      return firstTypeClassName;
-    }
-
-    public String getSecondTypeClassName() {
-      return secondTypeClassName;
+    private static String descToName(String desc) {
+        if (desc.startsWith("L")) {
+            return desc.substring(1, desc.length() - 1);
+        } else {
+            return desc;
+        }
     }
 
     public static Tuple2ClassModel create(String firstTypeDesc,
-            String firstTypeClassName, String secondTypeDesc,
-            String secondTypeClassName) {
+            String secondTypeDesc, boolean isConstructable) {
+        final String firstTypeClassName = descToName(firstTypeDesc);
+        final String secondTypeClassName = descToName(secondTypeDesc);
 
         List<AllFieldInfo> fields = new ArrayList<AllFieldInfo>(2);
         fields.add(new AllFieldInfo("_1", firstTypeDesc, firstTypeClassName, -1));
         fields.add(new AllFieldInfo("_2", secondTypeDesc, secondTypeClassName, -1));
 
         MethodDefGenerator constructorGen = new MethodDefGenerator<Tuple2ClassModel>() {
+            private String convertDescToType(final String desc, KernelWriter writer) {
+                final String type;
+                final String converted = writer.convertType(desc, true);
+                if (desc.startsWith("L")) {
+                  ClassModel cm = writer.getEntryPoint().getModelFromObjectArrayFieldsClasses(
+                      converted.trim(), new ClassModelMatcher() {
+                          @Override
+                          public boolean matches(ClassModel model) {
+                              // No generic types should be allowed for fields of Tuple2s
+                              if (model.getClassWeAreModelling().getName().equals(converted.trim())) {
+                                  return true;
+                              } else {
+                                  return false;
+                              }
+                          }
+                      });
+                  type = "__global " + cm.getMangledClassName() + " * ";
+                } else {
+                  type = converted;
+                }
+                return type;
+            }
+
             @Override
             public String getMethodDef(HardCodedMethodModel method,
                     Tuple2ClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
 
-                String firstType = writer.convertType(classModel.getFirstTypeDesc(), true);
-                if (classModel.getFirstTypeDesc().startsWith("L")) {
-                  ClassModel cm = writer.getEntryPoint().getObjectArrayFieldsClasses().get(
-                      firstType.trim());
-                  firstType = "__global " + cm.getMangledClassName() + " * ";
-                }
-
-                String secondType = writer.convertType(classModel.getSecondTypeDesc(), true);
-                if (classModel.getSecondTypeDesc().startsWith("L")) {
-                  ClassModel cm = writer.getEntryPoint().getObjectArrayFieldsClasses().get(
-                      secondType.trim());
-                  secondType = "__global " + cm.getMangledClassName() + " * ";
-                }
+                final String firstType = convertDescToType(classModel.getFirstTypeDesc(), writer);
+                final String secondType = convertDescToType(classModel.getSecondTypeDesc(), writer);
 
                 StringBuilder sb = new StringBuilder();
                 sb.append("static __global " + owner + " *" + method.getName() +
@@ -98,33 +101,33 @@ public class Tuple2ClassModel extends HardCodedClassModel {
               true, "_2"));
         methods.add(new HardCodedMethodModel("_2$mcI$sp", "()" + secondTypeDesc, null,
               true, "_2"));
-        methods.add(new HardCodedMethodModel("<init>", "(" + firstTypeDesc +
-              secondTypeDesc + ")V", constructorGen, false, null));
+        if (isConstructable) {
+            methods.add(new HardCodedMethodModel("<init>", "(" + firstTypeDesc +
+                  secondTypeDesc + ")V", constructorGen, false, null));
+        }
 
         return new Tuple2ClassModel(firstTypeDesc, secondTypeDesc,
-            firstTypeClassName, secondTypeClassName, methods, fields);
+            methods, fields);
     }
 
     @Override
-    public boolean matches() {
-        return true;
-    }
-
-    @Override
-    public List<String> getNestedClassNames() {
+    public List<String> getNestedTypeDescs() {
         List<String> l = new ArrayList<String>(2);
-        if (firstTypeDesc.startsWith("L")) {
-            l.add(firstTypeClassName);
+        if (getFirstTypeDesc().startsWith("L")) {
+            l.add(getFirstTypeDesc());
         }
-        if (secondTypeDesc.startsWith("L")) {
-            l.add(secondTypeClassName);
+        if (getSecondTypeDesc().startsWith("L")) {
+            l.add(getSecondTypeDesc());
         }
         return l;
     }
 
     @Override
     public String getMangledClassName() {
-        return "scala_Tuple2_" + firstTypeClassName.replace(".", "_") + "_" + secondTypeClassName.replace(".", "_");
+        final String firstTypeClassName = descToName(getFirstTypeDesc());
+        final String secondTypeClassName = descToName(getSecondTypeDesc());
+        return "scala_Tuple2_" + firstTypeClassName.replace(".", "_") + "_" +
+          secondTypeClassName.replace(".", "_");
     }
 
    @Override
@@ -134,7 +137,6 @@ public class Tuple2ClassModel extends HardCodedClassModel {
 
    @Override
    public String toString() {
-       return "Tuple2[" + firstTypeDesc + ", " + secondTypeDesc + ", " +
-         firstTypeClassName + ", " + secondTypeClassName + "]";
+       return "Tuple2[" + getFirstTypeDesc() + ", " + getSecondTypeDesc() + "]";
    }
 }

@@ -45,7 +45,10 @@ import com.amd.aparapi.internal.model.*;
 import com.amd.aparapi.internal.model.ClassModel.AttributePool.*;
 import com.amd.aparapi.internal.model.ClassModel.AttributePool.RuntimeAnnotationsEntry.*;
 import com.amd.aparapi.internal.model.ClassModel.*;
+import com.amd.aparapi.internal.model.HardCodedClassModel.TypeParameters;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
+import com.amd.aparapi.internal.model.FullMethodSignature;
+import com.amd.aparapi.internal.model.FullMethodSignature.TypeSignature;
 
 import java.util.*;
 
@@ -507,6 +510,49 @@ public abstract class KernelWriter extends BlockWriter{
        newLine();
    }
 
+   class SignatureMatcher extends ClassModelMatcher {
+       private final TypeSignature targetSig;
+
+       public SignatureMatcher(TypeSignature targetSig) {
+           this.targetSig = targetSig;
+       }
+
+       @Override
+       public boolean matches(ClassModel model) {
+           String modelDesc = "L" + model.getClassWeAreModelling().getName().replace('.', '/') + ";";
+           if (modelDesc.equals(targetSig.getBaseType())) {
+               if (model instanceof HardCodedClassModel) {
+                   HardCodedClassModel hc = (HardCodedClassModel)model;
+
+                   TypeParameters hcTypes = hc.getTypeParamDescs();
+                   List<String> targetTypes = targetSig.getTypeParameters();
+
+                   if (hcTypes.size() == targetTypes.size()) {
+                       for (int index = 0; index < hcTypes.size(); index++) {
+                           String target = targetTypes.get(index);
+                           String curr = hcTypes.get(index);
+                           if (!TypeSignature.compatible(target, curr)) {
+                               return false;
+                           }
+                       }
+                       return true;
+                   } else {
+                       return false;
+                   }
+               } else {
+                   if (!targetSig.getTypeParameters().isEmpty()) {
+                       throw new RuntimeException("Do not support mathing " +
+                           "loaded classes with generic types");
+                   }
+                   return true;
+               }
+           } else {
+               return false;
+           }
+
+       }
+   }
+
    @Override public void write(Entrypoint _entryPoint,
          Collection<ScalaParameter> params) throws CodeGenException {
       final List<String> thisStruct = new ArrayList<String>();
@@ -738,11 +784,14 @@ public abstract class KernelWriter extends BlockWriter{
       List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
       Set<String> emitted = new HashSet<String>();
       for (String className : lexicalOrdering) {
-        if (emitted.contains(className)) continue;
 
-        final ClassModel cm = _entryPoint.getObjectArrayFieldsClasses().get(className);
-        emitExternalObjectDef(cm);
-        emitted.add(className);
+        for (final ClassModel cm : _entryPoint.getModelsForClassName(className)) {
+            final String mangled = cm.getMangledClassName();
+            if (emitted.contains(mangled)) continue;
+
+            emitExternalObjectDef(cm);
+            emitted.add(mangled);
+        }
       }
 
       write("typedef struct This_s{");
@@ -791,11 +840,22 @@ public abstract class KernelWriter extends BlockWriter{
          final String returnType = mm.getReturnType();
          this.currentReturnType = returnType;
 
-         String convertedReturnType = convertType(returnType, true);
+         final String fullReturnType;
+         final String convertedReturnType = convertType(returnType, true);
          if (returnType.startsWith("L")) {
-           ClassModel cm = entryPoint.getObjectArrayFieldsClasses().get(
-               convertedReturnType.trim());
-           convertedReturnType = cm.getMangledClassName();
+           SignatureEntry sigEntry =
+               mm.getMethod().getAttributePool().getSignatureEntry();
+           final TypeSignature sig;
+           if (sigEntry != null) {
+               sig = new FullMethodSignature(sigEntry.getSignature()).getReturnType();
+           } else {
+               sig = new TypeSignature(returnType);
+           }
+           ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+               convertedReturnType.trim(), new SignatureMatcher(sig));
+           fullReturnType = cm.getMangledClassName();
+         } else {
+           fullReturnType = convertedReturnType;
          }
 
          if (mm.getSimpleName().equals("<init>")) {
@@ -804,7 +864,7 @@ public abstract class KernelWriter extends BlockWriter{
            write("static __global " + owner.getClassWeAreModelling().getName().replace('.', '_') + " * ");
            processingConstructor = true;
          } else if (returnType.startsWith("L")) {
-           write("static __global " + convertedReturnType);
+           write("static __global " + fullReturnType);
            write(" *");
            processingConstructor = false;
          } else {
@@ -814,7 +874,7 @@ public abstract class KernelWriter extends BlockWriter{
            } else {
              write("static ");
            }
-           write(convertedReturnType);
+           write(fullReturnType);
            processingConstructor = false;
          }
 
@@ -826,7 +886,9 @@ public abstract class KernelWriter extends BlockWriter{
                write("This *this");
             } else {
                // Call to an object member or superclass of member
-               for (final ClassModel c : _entryPoint.getObjectArrayFieldsClasses().values()) {
+               Iterator<ClassModel> classIter = _entryPoint.getObjectArrayFieldsClassesIterator();
+               while (classIter.hasNext()) {
+                  final ClassModel c = classIter.next();
                   if (mm.getMethod().getClassModel() == c) {
                      write("__global " + mm.getMethod().getClassModel().getClassWeAreModelling().getName().replace('.', '_')
                            + " *this");
@@ -859,8 +921,22 @@ public abstract class KernelWriter extends BlockWriter{
                }
                final String convertedType;
                if (descriptor.startsWith("L")) {
-                 ClassModel cm = entryPoint.getObjectArrayFieldsClasses().get(
-                     convertType(descriptor, true).trim());
+                 final String converted = convertType(descriptor, true).trim();
+                 final SignatureEntry sigEntry = mm.getMethod().getAttributePool().getSignatureEntry();
+                 final TypeSignature sig;
+
+                 if (sigEntry != null) {
+                     final int argumentOffset = (mm.getMethod().isStatic() ?
+                         lvi.getVariableIndex() : lvi.getVariableIndex() - 1);
+                     final FullMethodSignature methodSig = new FullMethodSignature(
+                         sigEntry.getSignature());
+                     sig =
+                         methodSig.getTypeParameters().get(argumentOffset);
+                 } else {
+                     sig = new TypeSignature(descriptor);
+                 }
+                 ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
+                     converted, new SignatureMatcher(sig));
                  convertedType = cm.getMangledClassName() + "* ";
                } else {
                  convertedType = convertType(descriptor, true);
@@ -960,8 +1036,6 @@ public abstract class KernelWriter extends BlockWriter{
          }
 
          if (outParam.getClazz() != null) {
-           // write("__global " + outParam.getType().replace('.', '_') + " result = " +
-           //     _entryPoint.getMethodModel().getName() + "(this");
            write("__global " + outParam.getType() + "* result = " +
                _entryPoint.getMethodModel().getName() + "(this");
          } else {

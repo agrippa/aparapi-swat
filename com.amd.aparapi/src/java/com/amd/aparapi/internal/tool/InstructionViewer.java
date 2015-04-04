@@ -60,6 +60,7 @@ import com.amd.aparapi.internal.model.MethodModel;
 import com.amd.aparapi.internal.tool.InstructionViewer.Form.Check;
 import com.amd.aparapi.internal.tool.InstructionViewer.Form.Template;
 import com.amd.aparapi.internal.tool.InstructionViewer.Form.Toggle;
+import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
 
 public class InstructionViewer implements Config.InstructionListener{
 
@@ -625,7 +626,8 @@ public class InstructionViewer implements Config.InstructionListener{
    public InstructionViewer(Color _background, String _name) {
 
       try {
-         classModel = ClassModel.createClassModel(Class.forName(_name), null);
+         classModel = ClassModel.createClassModel(Class.forName(_name), null,
+             new ShouldNotCallMatcher());
       } catch (final ClassParseException e) {
          // TODO Auto-generated catch block
          e.printStackTrace();

@@ -828,7 +828,7 @@ public abstract class BlockWriter{
        private final String name;
        private final Class<?> clazz;
        private final DIRECTION dir;
-       private final List<String> typeParameters;
+       private final List<String> typeParameterDescs;
        private final List<Boolean> typeParameterIsObject;
 
        public ScalaParameter(String type, Class<?> clazz, String name,
@@ -837,19 +837,19 @@ public abstract class BlockWriter{
          this.clazz = clazz;
          this.name = name;
          this.dir = dir;
-         this.typeParameters = new LinkedList<String>();
+         this.typeParameterDescs = new LinkedList<String>();
          this.typeParameterIsObject = new LinkedList<Boolean>();
        }
 
        public void addTypeParameter(String s, boolean isObject) {
-           typeParameters.add(s);
+           typeParameterDescs.add(s);
            typeParameterIsObject.add(isObject);
        }
 
        public String[] getDescArray() {
-           String[] arr = new String[typeParameters.size()];
+           String[] arr = new String[typeParameterDescs.size()];
            int index = 0;
-           for (String param : typeParameters) {
+           for (String param : typeParameterDescs) {
                arr[index] = param;
                index++;
            }
@@ -857,8 +857,8 @@ public abstract class BlockWriter{
        }
 
        public String getTypeParameter(int i) {
-           if (i < typeParameters.size()) {
-               return typeParameters.get(i);
+           if (i < typeParameterDescs.size()) {
+               return typeParameterDescs.get(i);
            } else {
                return null;
            }
@@ -886,9 +886,14 @@ public abstract class BlockWriter{
        public String getType() {
            StringBuilder sb = new StringBuilder();
            sb.append(type.replace('.', '_'));
-           for (String typeParam : typeParameters) {
+           for (String typeParam : typeParameterDescs) {
                sb.append("_");
-               sb.append(typeParam.replace(".", "_"));
+               if (typeParam.charAt(0) == 'L') {
+                   sb.append(typeParam.substring(1,
+                         typeParam.length() - 1).replace(".", "_"));
+               } else {
+                   sb.append(typeParam);
+               }
            }
            // sb.append("*");
            return sb.toString();
@@ -898,10 +903,16 @@ public abstract class BlockWriter{
            final String param;
            if (!typeParameterIsObject(field)) {
              param = "__global " + ClassModel.convert(
-                 typeParameters.get(field), "", true) + "* " + name + "_" + (field + 1);
+                 typeParameterDescs.get(field), "", true) + "* " + name + "_" + (field + 1);
            } else {
-             param = "__global " + typeParameters.get(field).replace('.',
-                 '_') + "* " + name + "_" + (field + 1);
+             String fieldDesc = typeParameterDescs.get(field);
+             if (fieldDesc.charAt(0) != 'L' ||
+                     fieldDesc.charAt(fieldDesc.length() - 1) != ';') {
+                 throw new RuntimeException("Invalid object signature \"" + fieldDesc + "\"");
+             }
+             fieldDesc = fieldDesc.substring(1, fieldDesc.length() - 1);
+             param = "__global " + fieldDesc.replace('.', '_') + "* " + name +
+                 "_" + (field + 1);
            }
            return param;
        }
