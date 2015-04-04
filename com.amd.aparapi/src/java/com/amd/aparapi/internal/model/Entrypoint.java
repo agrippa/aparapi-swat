@@ -726,8 +726,7 @@ public class Entrypoint implements Cloneable {
                             new ClassModelMatcher() {
                                 @Override
                                 public boolean matches(ClassModel model) {
-                                    // TODO no idea...
-                                    throw new UnsupportedOperationException();
+                                    return className.equals(model.getClassWeAreModelling().getName());
                                 }
                             });
                         if (refModel == null) {
