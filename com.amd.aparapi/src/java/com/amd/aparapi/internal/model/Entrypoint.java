@@ -349,6 +349,7 @@ public class Entrypoint implements Cloneable {
       // Quickly bail if it is a ref
       if (field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8().startsWith("L")
             || field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8().startsWith("[L")) {
+         System.err.println("Referencing field " + accessedFieldName + " in " + className);
          throw new ClassParseException(ClassParseException.TYPE.OBJECTARRAYFIELDREFERENCE);
       }
 
