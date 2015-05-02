@@ -217,7 +217,6 @@ public abstract class KernelWriter extends BlockWriter{
 
    @Override public void writeConstructorCall(ConstructorCall call) throws CodeGenException {
      I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
-     New newVar = call.getNewVar();
 
      MethodEntry constructorEntry = invokeSpecial.getConstantPoolMethodEntry();
      final String constructorName =
@@ -267,6 +266,11 @@ public abstract class KernelWriter extends BlockWriter{
           _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
       final String methodClass =
           _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+
+      if (methodName.equals("<init>") && !_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
+          writeConstructorCall(new ConstructorCall(((Instruction)_methodCall).getMethod(), (I_INVOKESPECIAL)_methodCall, null));
+          return false;
+      }
 
       if (methodClass.equals("scala/runtime/BoxesRunTime")) {
           final Set<String> ignorableMethods = new HashSet<String>();
@@ -329,6 +333,7 @@ public abstract class KernelWriter extends BlockWriter{
              if (target instanceof I_CHECKCAST) {
                target = target.getPrevPC();
              }
+
              if (target instanceof LocalVariableConstIndexLoad) {
                LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)target;
                LocalVariableInfo info = ld.getLocalVariableInfo();
@@ -343,6 +348,23 @@ public abstract class KernelWriter extends BlockWriter{
                writeMethod(nestedCall, nestedCall.getConstantPoolMethodEntry());
                write("->" + getterFieldName);
                return false;
+             } else if (target instanceof AccessArrayElement) {
+               AccessArrayElement arrayAccess = (AccessArrayElement)target;
+
+               final Instruction refAccess = arrayAccess.getArrayRef();
+               //assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
+               final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
+                     .getNameUTF8Entry().getUTF8();
+               write(" (this->" + fieldName);
+               write("[");
+               writeInstruction(arrayAccess.getArrayIndex());
+               write("])." + getterFieldName);
+
+               return false;
+             } else {
+                 throw new RuntimeException("Unhandled target \"" +
+                         target.toString() + "\" for getter " +
+                         getterFieldName);
              }
            }
          }
@@ -363,8 +385,6 @@ public abstract class KernelWriter extends BlockWriter{
 
             boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
 
-         System.err.println("Working on method " + _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + ", intrinsic=" + intrinsicMapping + " m=" + m + " isMapped=" + isMapped + " " + _methodEntry.getOwnerClassModel().getClassWeAreModelling().getName());
-
             if (m != null) {
                write(m.getName());
             } else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
@@ -374,7 +394,7 @@ public abstract class KernelWriter extends BlockWriter{
                */
             } else {
                // Must be a library call like rsqrt
-               if (!isMapped) {
+               if (!isMapped && !isScalaMapped) {
                  throw new RuntimeException(_methodEntry + " should be mapped method!");
                }
                write(methodName);
@@ -398,7 +418,7 @@ public abstract class KernelWriter extends BlockWriter{
             } else if (i instanceof LocalVariableConstIndexLoad) {
                writeInstruction(i);
             } else if (i instanceof AccessArrayElement) {
-               final AccessArrayElement arrayAccess = (AccessArrayElement) ((VirtualMethodCall) _methodCall).getInstanceReference();
+               final AccessArrayElement arrayAccess = (AccessArrayElement)i;
                final Instruction refAccess = arrayAccess.getArrayRef();
                //assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
                final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
@@ -577,7 +597,6 @@ public abstract class KernelWriter extends BlockWriter{
          final StringBuilder assignLine = new StringBuilder();
 
          String signature = field.getDescriptor();
-         System.err.println("  signature=" + signature);
 
          boolean isPointer = false;
 

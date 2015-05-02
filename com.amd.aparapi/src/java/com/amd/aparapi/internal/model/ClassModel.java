@@ -2623,7 +2623,6 @@ public abstract class ClassModel {
     */
    private void parse(ClassLoader _classLoader, String _className) throws ClassParseException {
       String classFilename = _className.replace('.', '/') + ".class";
-      System.err.println(classFilename);
       InputStream stream = _classLoader.getResourceAsStream(classFilename);
       if (stream == null) {
         throw new RuntimeException("Unable to resolve " + classFilename);

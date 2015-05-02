@@ -336,9 +336,6 @@ public class Entrypoint implements Cloneable {
                   logger.fine("Looking for class in accessor call: " + methodsActualClassName);
                }
 
-               System.err.println("Trying to resolve " + methodsActualClassName +
-                   " " + _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + " " +
-                   _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8());
                final String methodName =
                  _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                final String methodDesc =
@@ -557,7 +554,6 @@ public class Entrypoint implements Cloneable {
                  throw new UnsupportedOperationException();
              }
          };
-         System.err.println("Resolving method " + methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + " in " + otherClassName);
          ClassModel otherClassModel = getOrUpdateAllClassAccesses(otherClassName, matcher);
 
          //if (logger.isLoggable(Level.FINE)) {
@@ -708,10 +704,6 @@ public class Entrypoint implements Cloneable {
 
             for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction =
                 instruction.getNextPC()) {
-              System.err.println("Looking at instruction " + instruction.toString() + " in method=" +
-                  methodModel.getName() + ", prev=" + (instruction.getPrevExpr() == null ? "null" :
-                    instruction.getPrevExpr().toString()) + ", next=" + (instruction.getNextExpr() == null ? "null" :
-                    instruction.getNextExpr().toString()));
 
                if (instruction instanceof AssignToArrayElement) {
                   final AssignToArrayElement assignment = (AssignToArrayElement) instruction;
@@ -723,7 +715,6 @@ public class Entrypoint implements Cloneable {
                      final FieldEntry field = getField.getConstantPoolFieldEntry();
                      final String assignedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                      arrayFieldAssignments.add(assignedArrayFieldName);
-                     System.err.println("A> Adding " + assignedArrayFieldName);
                      addToReferencedFieldNames(assignedArrayFieldName, null);
 
                   }
@@ -737,7 +728,6 @@ public class Entrypoint implements Cloneable {
                      final FieldEntry field = getField.getConstantPoolFieldEntry();
                      final String accessedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                      arrayFieldAccesses.add(accessedArrayFieldName);
-                     System.err.println("B> Adding " + accessedArrayFieldName);
                      addToReferencedFieldNames(accessedArrayFieldName, null);
 
                   }
@@ -760,10 +750,8 @@ public class Entrypoint implements Cloneable {
                   final FieldEntry field = access.getConstantPoolFieldEntry();
                   final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                   fieldAccesses.add(accessedFieldName);
-                  System.err.println("C> Adding " + accessedFieldName);
                   final String signature;
                   if (access instanceof ScalaGetObjectRefField) {
-                    System.err.println("AccessField=" + access.toString() + ", " + (access instanceof ScalaGetObjectRefField));
                     ScalaGetObjectRefField scalaGet = (ScalaGetObjectRefField)access;
                     I_CHECKCAST cast = scalaGet.getCast();
                     signature = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8().replace('.', '/');
@@ -781,7 +769,6 @@ public class Entrypoint implements Cloneable {
                   if (signature.startsWith("[L")) {
                      // Turn [Lcom/amd/javalabs/opencl/demo/DummyOOA; into com.amd.javalabs.opencl.demo.DummyOOA for example
                      final String className = (signature.substring(2, signature.length() - 1)).replace('/', '.');
-                     System.err.println("Trying to find model for signature=" + className + ", accessed field=" + accessedFieldName);
                      HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
                          @Override
                          public boolean matches(HardCodedClassModel model) {
@@ -790,7 +777,6 @@ public class Entrypoint implements Cloneable {
                      };
 
                      final ClassModel arrayFieldModel = getOrUpdateAllClassAccesses(className, matcher);
-                     System.err.println("arrayFieldModel=" + arrayFieldModel + ", " + arrayFieldModel.getMangledClassName());
                      if (arrayFieldModel != null) {
                         if (arrayFieldModel instanceof HardCodedClassModel) {
                           addToReferencedFieldNames(accessedFieldName,
@@ -857,7 +843,6 @@ public class Entrypoint implements Cloneable {
                   final FieldEntry field = assignment.getConstantPoolFieldEntry();
                   final String assignedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                   fieldAssignments.add(assignedFieldName);
-                  System.err.println("D> Adding " + assignedFieldName);
                   addToReferencedFieldNames(assignedFieldName, null);
 
                   final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
@@ -879,7 +864,6 @@ public class Entrypoint implements Cloneable {
                   MethodModel invokedMethod = invokeInstruction.getMethod();
                   FieldEntry getterField = getSimpleGetterField(invokedMethod);
                   if (getterField != null) {
-                     System.err.println("E> Adding " + getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
                      addToReferencedFieldNames(getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(), null);
                   }
                   else {
@@ -898,7 +882,6 @@ public class Entrypoint implements Cloneable {
                               final FieldEntry field = access.getConstantPoolFieldEntry();
                               final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                               arrayFieldAssignments.add(accessedFieldName);
-                              System.err.println("F> Adding " + accessedFieldName);
                               addToReferencedFieldNames(accessedFieldName, null);
                            }
                            else {
@@ -924,7 +907,6 @@ public class Entrypoint implements Cloneable {
                   final ClassModelField ff = classModel.getField(referencedFieldName);
                   assert ff != null : "ff should not be null for " + clazz.getName() + "." + referencedFieldName;
                   if (typeHint != null) ff.setTypeHint(typeHint);
-                  System.err.println("Adding " + ff.getName() + " " + ff.getDescriptor() + " to referenced class model fields");
                   referencedClassModelFields.add(ff);
                }
             } catch (final SecurityException e) {

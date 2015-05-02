@@ -694,7 +694,6 @@ public abstract class MethodModel {
 
                // back up from root tail past each instruction expecting to create a consumed operand for this instruction
                for (int i = 0; i < instruction.getStackConsumeCount();) {
-                  System.err.println("  Looking at cursor=\"" + cursor.toString() + "\"");
                   if (!cursor.producesStack()) {
                      foundNonStackProducer = true; // we spotted an instruction that does not consume stack. So we need to analyze this
                   } else {
@@ -703,10 +702,6 @@ public abstract class MethodModel {
                   operandStart = cursor;
                   cursor = cursor.getPrevExpr();
                }
-
-               System.err.println("foundNonStackProducer=" + foundNonStackProducer + " operandStart=" +
-                   (operandStart == null ? "null" : operandStart.toString()) + " cursor=" + (cursor == null ? "null" :
-                     cursor.toString()) + " instruction=" + (instruction == null ? "null" : instruction.toString()));
 
                // if we found something that did not consume stack we probably have an expression with a side effect 
 
@@ -723,9 +718,6 @@ public abstract class MethodModel {
                final Instruction childTail = expressionList.getTail();
                final Instruction childHead = expressionList.createList(cursor);
 
-               System.err.println("Setting children of \"" + instruction.toString() + "\" to \"" + (childHead == null ?
-                     "null" : childHead.toString()) + "\" \"" + (childTail == null ? "null" : childTail.toString()));
-
                instruction.setChildren(childHead, childTail);
             }
             // add this instruction to the tail of roots
@@ -739,9 +731,7 @@ public abstract class MethodModel {
            @Override public Instruction transform(final ExpressionList _expressionList, final Instruction i) {
              if (i instanceof I_INVOKESPECIAL) {
                Instruction newi = i.getPrevExpr();
-               System.err.println("  " + i.toString() + " " + (newi == null ? "null" : newi.toString()));
                if (newi instanceof New) {
-                 System.err.println("Creating constructor");
                  ConstructorCall call = new ConstructorCall(MethodModel.this,
                      (I_INVOKESPECIAL)i, (New)newi);
                  _expressionList.replaceInclusive(newi, i, call);
@@ -1393,13 +1383,13 @@ public abstract class MethodModel {
    void applyTransformations(ExpressionList _expressionList, final Instruction _instruction, final Instruction _operandStart)
          throws ClassParseException {
 
-      // if (logger.isLoggable(Level.FINE)) {
+      if (logger.isLoggable(Level.FINE)) {
 
-         System.err.println("We are looking at " + _instruction + " which wants to consume " + _instruction.getStackConsumeCount()
+         System.out.println("We are looking at " + _instruction + " which wants to consume " + _instruction.getStackConsumeCount()
                + " operands, produces stack? " + _operandStart.producesStack() + ", is assign to local? " +
                (_instruction instanceof AssignToLocalVariable) + ", next is assign to local? " +
                (_operandStart.getNextExpr() instanceof AssignToLocalVariable) + " -> " + _operandStart.getNextExpr());
-      // }
+      }
       boolean txformed = false;
 
       /**
@@ -1428,9 +1418,6 @@ public abstract class MethodModel {
          boolean again = false;
          for (Instruction i = _operandStart; i != null; i = again ? i : i.getNextExpr()) {
             again = false;
-
-            System.err.println("Trying to transform " + i.toString() + " next=" + (i.getNextExpr() == null ? "null" :
-                  i.getNextExpr().toString()));
 
             for (final InstructionTransformer txformer : transformers) {
                final Instruction newI = txformer.transform(_expressionList, i);
