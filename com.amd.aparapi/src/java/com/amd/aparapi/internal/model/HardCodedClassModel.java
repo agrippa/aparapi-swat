@@ -41,6 +41,7 @@ public abstract class HardCodedClassModel extends ClassModel {
       return methods;
     }
 
+    public abstract String getDescriptor();
     public abstract List<String> getNestedTypeDescs();
 
     @Override

@@ -25,6 +25,13 @@ public class Tuple2ClassModel extends HardCodedClassModel {
         initMethodOwners();
     }
 
+    @Override
+    public String getDescriptor() {
+
+      return "Lscala/Tuple2<" + descToName(getFirstTypeDesc()).replace('.', '/') + "," +
+        descToName(getSecondTypeDesc()).replace('.', '/') + ">";
+    }
+
     public String getFirstTypeDesc() {
       return paramDescs.get(0);
     }

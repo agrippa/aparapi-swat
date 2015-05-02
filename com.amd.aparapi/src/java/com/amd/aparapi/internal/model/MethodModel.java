@@ -151,6 +151,87 @@ public abstract class MethodModel {
       return usesByteWrites;
    }
 
+   interface BytecodeReplacement {
+     public int size();
+     public boolean matches(int i, Instruction insn);
+     public List<Instruction> replace(List<Instruction> insns);
+   }
+
+   class ObjectRefGetReplace implements BytecodeReplacement {
+     @Override
+     public int size() { return 3; }
+     
+     @Override
+     public boolean matches(int i, Instruction insn) {
+       switch (i) {
+         case 0:
+           return insn instanceof I_GETFIELD;
+         case 1:
+           return insn instanceof I_GETFIELD;
+         case 2:
+           return insn instanceof I_CHECKCAST;
+         default:
+           throw new RuntimeException();
+       }
+     }
+
+     @Override
+     public List<Instruction> replace(List<Instruction> insns) {
+       I_GETFIELD firstGet = (I_GETFIELD)insns.get(0);
+       I_GETFIELD secondGet = (I_GETFIELD)insns.get(1);
+       I_CHECKCAST check = (I_CHECKCAST)insns.get(2);
+
+       String firstGetDesc =
+         firstGet.getConstantPoolFieldEntry().getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+       String secondFieldName = 
+         secondGet.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+
+       if (firstGetDesc.equals("Lscala/runtime/ObjectRef;") && secondFieldName.equals("elem")) {
+         List<Instruction> replace = new LinkedList<Instruction>();
+         replace.add(new ScalaGetObjectRefField(MethodModel.this, firstGet, check,
+               firstGet.getThisPC()));
+         return replace;
+       }
+       return null;
+     }
+   }
+
+   class IntRefCreateReplace implements BytecodeReplacement {
+     @Override
+     public int size() { return 1; }
+
+     @Override
+     public boolean matches(int i, Instruction insn) {
+       switch (i) {
+         case 0:
+           return insn instanceof I_INVOKESTATIC;
+         default:
+           throw new RuntimeException();
+       }
+     }
+
+     @Override
+     public List<Instruction> replace(List<Instruction> insns) {
+       I_INVOKESTATIC invoke = (I_INVOKESTATIC)insns.get(0);
+       MethodEntry m = invoke.getConstantPoolMethodEntry();
+
+       String className = m.getClassEntry().getNameUTF8Entry().getUTF8();
+       String methodName = m.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+       String methodDesc = m.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+
+       if (className.equals("scala/runtime/IntRef") &&
+           methodName.equals("create") &&
+           methodDesc.equals("(I)Lscala/runtime/IntRef;")) {
+         List<Instruction> replace = new ArrayList<Instruction>(0);
+         return replace;
+       }
+       return null;
+     }
+   }
+
+   private BytecodeReplacement[] replacers = new BytecodeReplacement[] {
+     new ObjectRefGetReplace(), new IntRefCreateReplace() };
+
    /**
     * Create a linked list of instructions (from pcHead to pcTail).
     * 
@@ -251,6 +332,93 @@ public abstract class MethodModel {
 
          // now move the tail along
          pcTail = instruction;
+      }
+
+      Instruction curr = pcHead;
+      while (curr != null) {
+        Instruction next = curr.getNextPC();
+
+        BytecodeReplacement matchingReplacer = null;
+        List<Instruction> matchingInsns = new ArrayList<Instruction>(10);
+        for (BytecodeReplacement r : replacers) {
+          boolean matches = true;
+          Instruction search = curr;
+          for (int i = 0; i < r.size() && search != null; i++, search = search.getNextPC()) {
+            if (!r.matches(i, search)) {
+              matches = false;
+              break;
+            }
+            matchingInsns.add(search);
+          }
+          if (search == null) matches = false;
+
+          if (matches) {
+            matchingReplacer = r;
+            break;
+          }
+        }
+
+        if (matchingReplacer != null) {
+          List<Instruction> newInsns = matchingReplacer.replace(matchingInsns);
+          if (newInsns != null) {
+            if (newInsns.size() > matchingInsns.size()) {
+              throw new RuntimeException();
+            }
+
+            for (Instruction existing : matchingInsns) {
+              pcMap.remove(existing.getThisPC());
+            }
+            int currPC = matchingInsns.get(0).getThisPC();
+            for (Instruction i : newInsns) {
+              pcMap.put(currPC, i);
+              currPC++;
+            }
+
+            Instruction prev = matchingInsns.get(0).getPrevPC();
+            next = matchingInsns.get(matchingInsns.size() - 1).getNextPC();
+
+            boolean isDelete = newInsns.isEmpty();
+
+            if (isDelete) {
+              if (prev != null) prev.setNextPC(next);
+            } else {
+              newInsns.get(0).setPrevPC(prev);
+              if (prev != null) prev.setNextPC(newInsns.get(0));
+            }
+
+            if (isDelete) {
+              if (next != null) next.setPrevPC(prev);
+            } else {
+              newInsns.get(newInsns.size() - 1).setNextPC(next);
+              if (next != null) next.setPrevPC(newInsns.get(newInsns.size() - 1));
+            }
+
+            if (pcHead == matchingInsns.get(0)) {
+              if (isDelete) {
+                pcHead = next;
+              } else {
+                pcHead = newInsns.get(0);
+              }
+            }
+
+            if (pcTail == matchingInsns.get(matchingInsns.size() - 1)) {
+              if (isDelete) {
+                pcTail = prev;
+              } else {
+                pcTail = newInsns.get(newInsns.size() - 1);
+              }
+            }
+
+            for (int i = 1; i < newInsns.size() - 1; i++) {
+              Instruction c = newInsns.get(i);
+              Instruction n = newInsns.get(i + 1);
+              c.setNextPC(n);
+              n.setPrevPC(c);
+            }
+          }
+        }
+
+        curr = next;
       }
 
       return (pcMap);
@@ -526,6 +694,7 @@ public abstract class MethodModel {
 
                // back up from root tail past each instruction expecting to create a consumed operand for this instruction
                for (int i = 0; i < instruction.getStackConsumeCount();) {
+                  System.err.println("  Looking at cursor=\"" + cursor.toString() + "\"");
                   if (!cursor.producesStack()) {
                      foundNonStackProducer = true; // we spotted an instruction that does not consume stack. So we need to analyze this
                   } else {
@@ -534,6 +703,10 @@ public abstract class MethodModel {
                   operandStart = cursor;
                   cursor = cursor.getPrevExpr();
                }
+
+               System.err.println("foundNonStackProducer=" + foundNonStackProducer + " operandStart=" +
+                   (operandStart == null ? "null" : operandStart.toString()) + " cursor=" + (cursor == null ? "null" :
+                     cursor.toString()) + " instruction=" + (instruction == null ? "null" : instruction.toString()));
 
                // if we found something that did not consume stack we probably have an expression with a side effect 
 
@@ -550,6 +723,9 @@ public abstract class MethodModel {
                final Instruction childTail = expressionList.getTail();
                final Instruction childHead = expressionList.createList(cursor);
 
+               System.err.println("Setting children of \"" + instruction.toString() + "\" to \"" + (childHead == null ?
+                     "null" : childHead.toString()) + "\" \"" + (childTail == null ? "null" : childTail.toString()));
+
                instruction.setChildren(childHead, childTail);
             }
             // add this instruction to the tail of roots
@@ -563,7 +739,9 @@ public abstract class MethodModel {
            @Override public Instruction transform(final ExpressionList _expressionList, final Instruction i) {
              if (i instanceof I_INVOKESPECIAL) {
                Instruction newi = i.getPrevExpr();
+               System.err.println("  " + i.toString() + " " + (newi == null ? "null" : newi.toString()));
                if (newi instanceof New) {
+                 System.err.println("Creating constructor");
                  ConstructorCall call = new ConstructorCall(MethodModel.this,
                      (I_INVOKESPECIAL)i, (New)newi);
                  _expressionList.replaceInclusive(newi, i, call);
@@ -1215,13 +1393,13 @@ public abstract class MethodModel {
    void applyTransformations(ExpressionList _expressionList, final Instruction _instruction, final Instruction _operandStart)
          throws ClassParseException {
 
-      if (logger.isLoggable(Level.FINE)) {
+      // if (logger.isLoggable(Level.FINE)) {
 
-         System.out.println("We are looking at " + _instruction + " which wants to consume " + _instruction.getStackConsumeCount()
+         System.err.println("We are looking at " + _instruction + " which wants to consume " + _instruction.getStackConsumeCount()
                + " operands, produces stack? " + _operandStart.producesStack() + ", is assign to local? " +
                (_instruction instanceof AssignToLocalVariable) + ", next is assign to local? " +
                (_operandStart.getNextExpr() instanceof AssignToLocalVariable) + " -> " + _operandStart.getNextExpr());
-      }
+      // }
       boolean txformed = false;
 
       /**
@@ -1250,6 +1428,9 @@ public abstract class MethodModel {
          boolean again = false;
          for (Instruction i = _operandStart; i != null; i = again ? i : i.getNextExpr()) {
             again = false;
+
+            System.err.println("Trying to transform " + i.toString() + " next=" + (i.getNextExpr() == null ? "null" :
+                  i.getNextExpr().toString()));
 
             for (final InstructionTransformer txformer : transformers) {
                final Instruction newI = txformer.transform(_expressionList, i);

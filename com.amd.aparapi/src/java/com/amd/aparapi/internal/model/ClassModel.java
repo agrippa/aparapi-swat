@@ -1759,6 +1759,8 @@ public abstract class ClassModel {
    public class ClassModelField{
       private final int fieldAccessFlags;
 
+      private String typeHint = null;
+
       AttributePool fieldAttributePool;
 
       private final int descriptorIndex;
@@ -1783,8 +1785,13 @@ public abstract class ClassModel {
          return (fieldAttributePool);
       }
 
+      public void setTypeHint(String s) {
+        typeHint = s;
+      }
+
       public String getDescriptor() {
-         return (getDescriptorUTF8Entry().getUTF8());
+         if (typeHint != null) return typeHint;
+         else return (getDescriptorUTF8Entry().getUTF8());
       }
 
       public int getDescriptorIndex() {
@@ -2616,6 +2623,7 @@ public abstract class ClassModel {
     */
    private void parse(ClassLoader _classLoader, String _className) throws ClassParseException {
       String classFilename = _className.replace('.', '/') + ".class";
+      System.err.println(classFilename);
       InputStream stream = _classLoader.getResourceAsStream(classFilename);
       if (stream == null) {
         throw new RuntimeException("Unable to resolve " + classFilename);

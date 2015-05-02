@@ -2151,9 +2151,11 @@ public abstract class Kernel implements Cloneable {
    public static boolean isMappedMethod(MethodReferenceEntry methodReferenceEntry) {
       if (CacheEnabler.areCachesEnabled())
          return getBoolean(mappedMethodFlags, methodReferenceEntry);
+      System.err.println("Looking for mapped methods");
       boolean isMapped = false;
       for (final Method kernelMethod : Kernel.class.getDeclaredMethods()) {
          if (kernelMethod.isAnnotationPresent(OpenCLMapping.class)) {
+             System.err.println("Comparing " + methodReferenceEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + " " + kernelMethod.getName());
             if (methodReferenceEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8().equals(kernelMethod.getName())) {
 
                // well they have the same name ;) 

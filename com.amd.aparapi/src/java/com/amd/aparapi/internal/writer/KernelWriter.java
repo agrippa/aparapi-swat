@@ -358,6 +358,13 @@ public abstract class KernelWriter extends BlockWriter{
             assert entryPoint != null : "entryPoint should not be null";
             boolean isMapped = Kernel.isMappedMethod(_methodEntry);
 
+            Set<String> scalaMapped = new HashSet<String>();
+            scalaMapped.add("scala/math/package$.sqrt(D)D");
+
+            boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
+
+         System.err.println("Working on method " + _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + ", intrinsic=" + intrinsicMapping + " m=" + m + " isMapped=" + isMapped + " " + _methodEntry.getOwnerClassModel().getClassWeAreModelling().getName());
+
             if (m != null) {
                write(m.getName());
             } else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
@@ -367,7 +374,9 @@ public abstract class KernelWriter extends BlockWriter{
                */
             } else {
                // Must be a library call like rsqrt
-               assert isMapped : _methodEntry + " should be mapped method!";
+               if (!isMapped) {
+                 throw new RuntimeException(_methodEntry + " should be mapped method!");
+               }
                write(methodName);
                isIntrinsic = true;
             }
@@ -568,6 +577,7 @@ public abstract class KernelWriter extends BlockWriter{
          final StringBuilder assignLine = new StringBuilder();
 
          String signature = field.getDescriptor();
+         System.err.println("  signature=" + signature);
 
          boolean isPointer = false;
 
@@ -618,7 +628,7 @@ public abstract class KernelWriter extends BlockWriter{
          String className = null;
          if (signature.startsWith("L")) {
             // Turn Lcom/amd/javalabs/opencl/demo/DummyOOA; into com_amd_javalabs_opencl_demo_DummyOOA for example
-            className = (signature.substring(1, signature.length() - 1)).replace('/', '_');
+            className = (signature.substring(1, signature.length() - 1)).replace('/', '_').replace('<', '_').replace('>', '_').replace(',', '_');
             argLine.append(className);
             thisStructLine.append(className);
          } else {

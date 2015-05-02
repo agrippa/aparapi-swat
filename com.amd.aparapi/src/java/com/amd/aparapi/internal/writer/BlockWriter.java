@@ -738,7 +738,10 @@ public abstract class BlockWriter{
         // Do nothing
         I_CHECKCAST checkCast = (I_CHECKCAST)_instruction;
         writeInstruction(checkCast.getPrevPC());
+      } else if (_instruction instanceof New) {
+        // Skip it?
       } else {
+         System.err.println(_instruction.toString());
          throw new CodeGenException(String.format("%s", _instruction.getByteCode().toString().toLowerCase()));
       }
 

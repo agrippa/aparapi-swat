@@ -44,6 +44,7 @@ import com.amd.aparapi.internal.model.MethodModel;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.Entry;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.FieldEntry;
+import com.amd.aparapi.internal.model.ClassModel.ConstantPool.ClassEntry;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodEntry;
 import com.amd.aparapi.internal.model.ClassModel.LocalVariableTableEntry;
 import com.amd.aparapi.internal.model.ClassModel.LocalVariableInfo;
@@ -1475,6 +1476,10 @@ public class InstructionSet{
          super(_methodPoolEntry, ByteCode.CHECKCAST, _byteReader, _wide);
       }
 
+      public ClassEntry getConstantPoolClassEntry() {
+        return (method.getConstantPool().getClassEntry(index));
+      }
+
       @Override public String getDescription() {
          return ("peek reference check against the constant accessed 16 bit");
       }
@@ -2019,6 +2024,46 @@ public class InstructionSet{
 
       @Override public String getDescription() {
          return ("sub top two floats");
+      }
+   }
+
+   public static class ScalaGetObjectRefField extends Instruction implements AccessInstanceField {
+     private final I_GETFIELD actual;
+     private final I_CHECKCAST cast;
+
+     public ScalaGetObjectRefField(MethodModel methodModel, I_GETFIELD actual,
+         I_CHECKCAST cast, int pc) {
+       super(methodModel, ByteCode.GETFIELD, pc);
+       this.actual = actual;
+       this.cast = cast;
+     }
+
+     public I_CHECKCAST getCast() {
+       return (cast);
+     }
+
+     @Override public String getDescription() {
+       return ("get scala object ref field");
+     }
+
+      @Override public int getConstantPoolFieldIndex() {
+         return (actual.getConstantPoolFieldIndex());
+      }
+
+      @Override public FieldEntry getConstantPoolFieldEntry() {
+         return (actual.getConstantPoolFieldEntry());
+      }
+
+      @Override public Instruction getInstance() {
+         return (actual.getInstance());
+      }
+
+      @Override public int getStackConsumeCount() {
+         return (1);
+      }
+
+      @Override public int getStackProduceCount() {
+         return (1);
       }
    }
 
