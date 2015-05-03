@@ -822,10 +822,66 @@ public abstract class BlockWriter{
       }
    }
 
-   public static class ScalaParameter {
+   public interface ScalaParameter {
        public static enum DIRECTION {
          IN, OUT
        }
+
+       public String getInputParameterString(KernelWriter writer);
+       public String getOutputParameterString(KernelWriter writer);
+       public String getStructString(KernelWriter writer);
+       public String getAssignString(KernelWriter writer);
+       public Class<?> getClazz();
+       public DIRECTION getDir();
+   }
+
+   public static class ScalaScalarParameter implements ScalaParameter {
+       private final String type;
+       private final String name;
+
+       public ScalaScalarParameter(String type, String name) {
+           if (type.equals("I")) {
+               this.type = "int";
+           } else if (type.equals("D")) {
+               this.type = "double";
+           } else if (type.equals("F")) {
+               this.type = "float";
+           } else {
+               throw new RuntimeException(type);
+           }
+           this.name = name;
+       }
+
+       @Override
+       public String getInputParameterString(KernelWriter writer) {
+           return type + " " + name;
+       }
+
+       @Override
+       public String getOutputParameterString(KernelWriter writer) {
+           throw new UnsupportedOperationException();
+       }
+
+       @Override
+       public String getAssignString(KernelWriter writer) {
+           return "this->" + name + " = " + name;
+       }
+
+       @Override
+       public String getStructString(KernelWriter writer) {
+           return type + " " + name;
+       }
+
+       @Override
+       public Class<?> getClazz() { return null; }
+
+       @Override
+       public DIRECTION getDir() {
+           return ScalaParameter.DIRECTION.IN;
+       }
+   }
+
+   public static class ScalaArrayParameter implements ScalaParameter {
 
        private final String type;
        private final String name;
@@ -834,7 +890,57 @@ public abstract class BlockWriter{
        private final List<String> typeParameterDescs;
        private final List<Boolean> typeParameterIsObject;
 
-       public ScalaParameter(String type, Class<?> clazz, String name,
+       public ScalaArrayParameter(String fullSig, String name, DIRECTION dir) {
+           this.name = name;
+           this.clazz = null;
+           this.dir = dir;
+
+           this.typeParameterDescs = new LinkedList<String>();
+           this.typeParameterIsObject = new LinkedList<Boolean>();
+
+           if (fullSig.charAt(0) != '[') {
+               throw new RuntimeException(fullSig);
+           }
+
+           String eleSig = fullSig.substring(1);
+           if (eleSig.indexOf('<') != -1) {
+               String topLevelType = eleSig.substring(0, eleSig.indexOf('<'));
+               if (topLevelType.charAt(0) != 'L') {
+                   throw new RuntimeException(fullSig);
+               }
+               this.type = topLevelType.substring(1).replace('/', '.');
+
+               String params = eleSig.substring(eleSig.indexOf('<') + 1, eleSig.lastIndexOf('>'));
+               if (params.indexOf('<') != -1 || params.indexOf('>') != -1) {
+                   throw new RuntimeException("Do not support nested parameter templates: " + fullSig);
+               }
+               String[] tokens = params.split(",");
+               for (int i = 0; i < tokens.length; i++) {
+                   String t = tokens[i];
+                   if (t.equals("I") || t.equals("F") || t.equals("D")) {
+                       this.typeParameterDescs.add(t);
+                       this.typeParameterIsObject.add(false);
+                   } else {
+                       this.typeParameterDescs.add("L" + t.replace('/', '.') + ";");
+                       this.typeParameterIsObject.add(true);
+                   }
+               }
+           } else {
+               if (eleSig.equals("I")) {
+                   this.type = "int";
+               } else if (eleSig.equals("D")) {
+                   this.type = "double";
+               } else if (eleSig.equals("F")) {
+                   this.type = "float";
+               } else if (eleSig.startsWith("L")) {
+                   this.type = eleSig.substring(1, eleSig.length() - 1).replace('/', '.');
+               } else {
+                   throw new RuntimeException(eleSig);
+               }
+           }
+       }
+
+       public ScalaArrayParameter(String type, Class<?> clazz, String name,
            DIRECTION dir) {
          this.type = type.trim();
          this.clazz = clazz;
@@ -874,6 +980,7 @@ public abstract class BlockWriter{
            return false;
        }
 
+       @Override
        public DIRECTION getDir() {
            return dir;
        }
@@ -882,6 +989,7 @@ public abstract class BlockWriter{
            return name;
        }
 
+       @Override
        public Class<?> getClazz() {
            return clazz;
        }
@@ -920,7 +1028,12 @@ public abstract class BlockWriter{
            return param;
        }
 
+       @Override
        public String getInputParameterString(KernelWriter writer) {
+           if (dir != DIRECTION.IN) {
+               throw new RuntimeException();
+           }
+
            if (type.equals("scala.Tuple2")) {
                final String firstParam = getParameterStringFor(writer, 0);
                final String secondParam = getParameterStringFor(writer, 1);
@@ -931,7 +1044,12 @@ public abstract class BlockWriter{
            }
        }
 
+       @Override
        public String getOutputParameterString(KernelWriter writer) {
+           if (dir != DIRECTION.OUT) {
+               throw new RuntimeException();
+           }
+
            if (type.equals("scala.Tuple2")) {
                final String firstParam = getParameterStringFor(writer, 0);
                final String secondParam = getParameterStringFor(writer, 1);
@@ -942,10 +1060,54 @@ public abstract class BlockWriter{
        }
 
        @Override
+       public String getStructString(KernelWriter writer) {
+           if (type.equals("scala.Tuple2")) {
+               if (dir == DIRECTION.OUT) {
+                   return getParameterStringFor(writer, 0) + "; " +
+                       getParameterStringFor(writer, 1) + "; ";
+               } else {
+                   return "__global " + getType() + " *" + name;
+               }
+           } else {
+               return "__global " + type.replace('.', '_') + "* " + name;
+           }
+       }
+
+       @Override
+       public String getAssignString(KernelWriter writer) {
+           if (dir != DIRECTION.IN) {
+               throw new RuntimeException();
+           }
+
+           if (type.equals("scala.Tuple2")) {
+               StringBuilder sb = new StringBuilder();
+               sb.append("this->" + name + " = " + name + "; ");
+               sb.append("for (int i = 0; i < " + name + "__javaArrayLength; i++) { ");
+
+               if (typeParameterIsObject.get(0)) {
+                   sb.append(name + "[i]._1 = " + name + "_1 + i; ");
+               } else {
+                   sb.append(name + "[i]._1 = " + name + "_1[i]; ");
+               }
+
+               if (typeParameterIsObject.get(1)) {
+                   sb.append(name + "[i]._2 = " + name + "_2 + i; ");
+               } else {
+                   sb.append(name + "[i]._2 = " + name + "_2[i]; ");
+               }
+
+               sb.append(" } ");
+               return sb.toString();
+           } else {
+               return "this->" + name + " = " + name;
+           }
+       }
+
+       @Override
        public String toString() {
           return "[" + type + " " + name + ", clazz=" + clazz + "]";
        }
    }
 
-   public abstract void write(Entrypoint entryPoint, Collection<ScalaParameter> params) throws CodeGenException;
+   public abstract void write(Entrypoint entryPoint, Collection<ScalaArrayParameter> params) throws CodeGenException;
 }

@@ -583,7 +583,7 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    @Override public void write(Entrypoint _entryPoint,
-         Collection<ScalaParameter> params) throws CodeGenException {
+         Collection<ScalaArrayParameter> params) throws CodeGenException {
       final List<String> thisStruct = new ArrayList<String>();
       final List<String> argLines = new ArrayList<String>();
       final List<String> assigns = new ArrayList<String>();
@@ -598,143 +598,55 @@ public abstract class KernelWriter extends BlockWriter{
 
          String signature = field.getDescriptor();
 
-         boolean isPointer = false;
-
-         int numDimensions = 0;
+         ScalaParameter param = null;
+         if (signature.startsWith("[")) {
+             param = new ScalaArrayParameter(signature,
+                     field.getName(), ScalaParameter.DIRECTION.IN);
+         } else {
+             param = new ScalaScalarParameter(signature, field.getName());
+         }
 
          // check the suffix
 
-         String type = field.getName().endsWith(Kernel.LOCAL_SUFFIX) ? __local
-               : (field.getName().endsWith(Kernel.CONSTANT_SUFFIX) ? __constant : __global);
-         Integer privateMemorySize = null;
-         try {
-            privateMemorySize = _entryPoint.getClassModel().getPrivateMemorySize(field.getName());
-         } catch (ClassParseException e) {
-            throw new CodeGenException(e);
-         }
+         boolean isPointer = signature.startsWith("[");
 
-         if (privateMemorySize != null) {
-            type = __private;
-         }
-         final RuntimeAnnotationsEntry visibleAnnotations = field.getAttributePool().getRuntimeVisibleAnnotationsEntry();
+         argLine.append(param.getInputParameterString(this));
+         thisStructLine.append(param.getStructString(this));
+         assignLine.append(param.getAssignString(this));
 
-         if (visibleAnnotations != null) {
-            for (final AnnotationInfo ai : visibleAnnotations) {
-               final String typeDescriptor = ai.getTypeDescriptor();
-               if (typeDescriptor.equals(LOCAL_ANNOTATION_NAME)) {
-                  type = __local;
-               } else if (typeDescriptor.equals(CONSTANT_ANNOTATION_NAME)) {
-                  type = __constant;
-               }
-            }
-         }
-
-         String argType = (__private.equals(type)) ? __constant : type;
-
-         //if we have a an array we want to mark the object as a pointer
-         //if we have a multiple dimensional array we want to remember the number of dimensions
-         while (signature.startsWith("[")) {
-            if (isPointer == false) {
-               argLine.append(argType + " ");
-               thisStructLine.append(type + " ");
-            }
-            isPointer = true;
-            numDimensions++;
-            signature = signature.substring(1);
-         }
-
-         // If it is a converted array of objects, emit the struct param
-         String className = null;
-         if (signature.startsWith("L")) {
-            // Turn Lcom/amd/javalabs/opencl/demo/DummyOOA; into com_amd_javalabs_opencl_demo_DummyOOA for example
-            className = (signature.substring(1, signature.length() - 1)).replace('/', '_').replace('<', '_').replace('>', '_').replace(',', '_');
-            argLine.append(className);
-            thisStructLine.append(className);
-         } else {
-            argLine.append(convertType(ClassModel.typeName(signature.charAt(0)), false));
-            thisStructLine.append(convertType(ClassModel.typeName(signature.charAt(0)), false));
-         }
-
-         argLine.append(" ");
-         thisStructLine.append(" ");
-
-         if (isPointer) {
-            argLine.append("*");
-            if (privateMemorySize == null) {
-               thisStructLine.append("*");
-            }
-         }
-
-         if (privateMemorySize == null) {
-            assignLine.append("this->");
-            assignLine.append(field.getName());
-            assignLine.append(" = ");
-            assignLine.append(field.getName());
-         }
-
-         argLine.append(field.getName());
-         thisStructLine.append(field.getName());
-         if (privateMemorySize == null) {
-            assigns.add(assignLine.toString());
-         }
+         assigns.add(assignLine.toString());
          argLines.add(argLine.toString());
-         if (privateMemorySize != null) {
-            thisStructLine.append("[").append(privateMemorySize).append("]");
-         }
          thisStruct.add(thisStructLine.toString());
 
          // Add int field into "this" struct for supporting java arraylength op
          // named like foo__javaArrayLength
-         if (isPointer && _entryPoint.getArrayFieldArrayLengthUsed().contains(field.getName()) || isPointer && numDimensions > 1) {
+         if (isPointer && _entryPoint.getArrayFieldArrayLengthUsed().contains(field.getName())) {
+            final StringBuilder lenStructLine = new StringBuilder();
+            final StringBuilder lenArgLine = new StringBuilder();
+            final StringBuilder lenAssignLine = new StringBuilder();
 
-            for (int i = 0; i < numDimensions; i++) {
-               final StringBuilder lenStructLine = new StringBuilder();
-               final StringBuilder lenArgLine = new StringBuilder();
-               final StringBuilder lenAssignLine = new StringBuilder();
+            String suffix = "";
+            String lenName = field.getName() + BlockWriter.arrayLengthMangleSuffix + suffix;
 
-               String suffix = numDimensions == 1 ? "" : Integer.toString(i);
-               String lenName = field.getName() + BlockWriter.arrayLengthMangleSuffix + suffix;
+            lenStructLine.append("int " + lenName);
 
-               lenStructLine.append("int " + lenName);
+            lenAssignLine.append("this->");
+            lenAssignLine.append(lenName);
+            lenAssignLine.append(" = ");
+            lenAssignLine.append(lenName);
 
-               lenAssignLine.append("this->");
-               lenAssignLine.append(lenName);
-               lenAssignLine.append(" = ");
-               lenAssignLine.append(lenName);
+            lenArgLine.append("int " + lenName);
 
-               lenArgLine.append("int " + lenName);
-
-               assigns.add(lenAssignLine.toString());
-               argLines.add(lenArgLine.toString());
-               thisStruct.add(lenStructLine.toString());
-
-               if (numDimensions > 1) {
-                  final StringBuilder dimStructLine = new StringBuilder();
-                  final StringBuilder dimArgLine = new StringBuilder();
-                  final StringBuilder dimAssignLine = new StringBuilder();
-                  String dimName = field.getName() + BlockWriter.arrayDimMangleSuffix + suffix;
-
-                  dimStructLine.append("int " + dimName);
-
-                  dimAssignLine.append("this->");
-                  dimAssignLine.append(dimName);
-                  dimAssignLine.append(" = ");
-                  dimAssignLine.append(dimName);
-
-                  dimArgLine.append("int " + dimName);
-
-                  assigns.add(dimAssignLine.toString());
-                  argLines.add(dimArgLine.toString());
-                  thisStruct.add(dimStructLine.toString());
-               }
-            }
-         }
+            assigns.add(lenAssignLine.toString());
+            argLines.add(lenArgLine.toString());
+            thisStruct.add(lenStructLine.toString());
+        }
       }
 
       if (_entryPoint.requiresHeap()) {
         argLines.add("__global void *heap");
         argLines.add("__global uint *free_index");
-        argLines.add("long heap_size");
+        argLines.add("unsigned int heap_size");
         argLines.add("__global int *processing_succeeded");
         argLines.add("__global int *any_failed");
 
@@ -745,7 +657,7 @@ public abstract class KernelWriter extends BlockWriter{
         thisStruct.add("__global void *heap");
         thisStruct.add("__global uint *free_index");
         thisStruct.add("int alloc_failed");
-        thisStruct.add("long heap_size");
+        thisStruct.add("unsigned int heap_size");
       }
 
       if (Config.enableByteWrites || _entryPoint.requiresByteAddressableStorePragma()) {
@@ -758,7 +670,7 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       boolean usesAtomics = false;
-      if (Config.enableAtomic32 || _entryPoint.requiresAtomic32Pragma()) {
+      if (Config.enableAtomic32 || _entryPoint.requiresAtomic32Pragma() || _entryPoint.requiresHeap()) {
          usesAtomics = true;
          writePragma("cl_khr_global_int32_base_atomics", true);
          writePragma("cl_khr_global_int32_extended_atomics", true);
@@ -766,7 +678,7 @@ public abstract class KernelWriter extends BlockWriter{
          writePragma("cl_khr_local_int32_extended_atomics", true);
       }
 
-      if (Config.enableAtomic64 || _entryPoint.requiresAtomic64Pragma() || _entryPoint.requiresHeap()) {
+      if (Config.enableAtomic64 || _entryPoint.requiresAtomic64Pragma()) {
          usesAtomics = true;
          writePragma("cl_khr_int64_base_atomics", true);
          writePragma("cl_khr_int64_extended_atomics", true);
@@ -792,7 +704,7 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       // Heap allocation
-      write("static __global void *alloc(__global void *heap, volatile __global uint *free_index, long heap_size, int nbytes, int *alloc_failed) {");
+      write("static __global void *alloc(__global void *heap, volatile __global uint *free_index, unsigned int heap_size, int nbytes, int *alloc_failed) {");
       in();
       newLine();
       {
@@ -980,13 +892,13 @@ public abstract class KernelWriter extends BlockWriter{
          newLine();
       }
 
-      ScalaParameter outParam = null;
+      ScalaArrayParameter outParam = null;
       write("__kernel void run(");
       in(); in();
       newLine();
       {
          boolean first = true;
-         for (ScalaParameter p : params) {
+         for (ScalaArrayParameter p : params) {
             if (first) {
                first = false;
             } else {
@@ -994,7 +906,7 @@ public abstract class KernelWriter extends BlockWriter{
                newLine();
             }
 
-            if (p.getDir() == ScalaParameter.DIRECTION.OUT) {
+            if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
                assert(outParam == null);
                outParam = p;
                write(p.getOutputParameterString(this));
@@ -1024,8 +936,8 @@ public abstract class KernelWriter extends BlockWriter{
          writeln(";");
       }
 
-      for (ScalaParameter p : params) {
-        if (p.getDir() == ScalaParameter.DIRECTION.IN) {
+      for (ScalaArrayParameter p : params) {
+        if (p.getDir() == ScalaArrayParameter.DIRECTION.IN) {
           if (p.getClazz() != null && p.getClazz().getName().equals("scala.Tuple2")) {
             writeln("__global " + p.getType() + " *my_" + p.getName() + " = " +
                 p.getName() + " + get_global_id(0);");
@@ -1046,7 +958,7 @@ public abstract class KernelWriter extends BlockWriter{
            newLine();
          }
 
-         for (ScalaParameter p : params) {
+         for (ScalaArrayParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
              if (p.getClazz() != null && p.getClazz().getName().equals("scala.Tuple2")) {
                if (p.typeParameterIsObject(0)) {
@@ -1071,7 +983,7 @@ public abstract class KernelWriter extends BlockWriter{
            write(outParam.getName() + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
          }
 
-         for (ScalaParameter p : params) {
+         for (ScalaArrayParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
              if (p.getClazz() == null) {
                write(", " + p.getName() + "[i]");
@@ -1228,7 +1140,7 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    public static WriterAndKernel writeToString(Entrypoint _entrypoint,
-         Collection<ScalaParameter> params) throws CodeGenException, AparapiException {
+         Collection<ScalaArrayParameter> params) throws CodeGenException, AparapiException {
 
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){

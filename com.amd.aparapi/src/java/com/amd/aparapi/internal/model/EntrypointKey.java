@@ -1,10 +1,12 @@
 package com.amd.aparapi.internal.model;
 
 import java.util.Collection;
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter;
 
 final class EntrypointKey{
-   public static EntrypointKey of(String entrypointName, String descriptor, Collection<ScalaParameter> params, HardCodedClassModels models) {
+   public static EntrypointKey of(String entrypointName, String descriptor,
+           Collection<ScalaArrayParameter> params,
+           HardCodedClassModels models) {
       return new EntrypointKey(entrypointName, descriptor, params, models);
    }
 
@@ -12,12 +14,13 @@ final class EntrypointKey{
 
    private String entrypointName;
 
-   private Collection<ScalaParameter> params;
+   private Collection<ScalaArrayParameter> params;
 
    private HardCodedClassModels models;
 
    private EntrypointKey(String entrypointName, String descriptor,
-           Collection<ScalaParameter> params, HardCodedClassModels models) {
+           Collection<ScalaArrayParameter> params,
+           HardCodedClassModels models) {
       this.entrypointName = entrypointName;
       this.descriptor = descriptor;
       this.params = params;
@@ -32,7 +35,7 @@ final class EntrypointKey{
        return entrypointName;
    }
 
-   Collection<ScalaParameter> getParams() {
+   Collection<ScalaArrayParameter> getParams() {
        return params;
    }
 

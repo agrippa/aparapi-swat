@@ -47,6 +47,7 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodReferenceEnt
 import com.amd.aparapi.internal.util.*;
 
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
+import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter;
 import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
@@ -571,7 +572,7 @@ public class Entrypoint implements Cloneable {
    }
 
    public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
-           Object _k, Collection<ScalaParameter> params, HardCodedClassModels setHardCodedClassModels)
+           Object _k, Collection<ScalaArrayParameter> params, HardCodedClassModels setHardCodedClassModels)
            throws AparapiException {
       classModel = _classModel;
       methodModel = _methodModel;
@@ -594,7 +595,7 @@ public class Entrypoint implements Cloneable {
       }
 
       if (params != null) {
-        for (ScalaParameter p : params) {
+        for (ScalaArrayParameter p : params) {
           if (p.getClazz() != null) {
             addClass(p.getClazz().getName(), p.getDescArray());
           }
@@ -716,6 +717,7 @@ public class Entrypoint implements Cloneable {
                      final String assignedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                      arrayFieldAssignments.add(assignedArrayFieldName);
                      addToReferencedFieldNames(assignedArrayFieldName, null);
+                     arrayFieldArrayLengthUsed.add(assignedArrayFieldName);
 
                   }
                } else if (instruction instanceof AccessArrayElement) {
@@ -729,6 +731,7 @@ public class Entrypoint implements Cloneable {
                      final String accessedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                      arrayFieldAccesses.add(accessedArrayFieldName);
                      addToReferencedFieldNames(accessedArrayFieldName, null);
+                     arrayFieldArrayLengthUsed.add(accessedArrayFieldName);
 
                   }
                } else if (instruction instanceof I_ARRAYLENGTH) {
