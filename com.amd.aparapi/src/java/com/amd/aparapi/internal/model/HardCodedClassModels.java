@@ -17,11 +17,25 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
            hardCodedClassModels.put(clz.getName(),
                    new LinkedList<HardCodedClassModel>());
        }
-       hardCodedClassModels.get(clz.getName()).add(model);
+
+       List<HardCodedClassModel> existing = hardCodedClassModels.get(clz.getName());
+       for (HardCodedClassModel cm : existing) {
+           if (cm.merge(model)) {
+               return;
+           }
+       }
+       existing.add(model);
+       // hardCodedClassModels.get(clz.getName()).add(model);
     }
 
     public HardCodedClassModel getClassModelFor(String className,
           HardCodedClassModelMatcher matcher) {
+       // System.err.println("  Looking up match for " + className +
+       //         ", contains? " + (hardCodedClassModels.containsKey(className)) +
+       //         " " + hardCodedClassModels.size());
+       // for (String k : hardCodedClassModels.keySet()) {
+       //     System.err.println("    " + k);
+       // }
        if (hardCodedClassModels.containsKey(className)) {
            List<HardCodedClassModel> classModels = hardCodedClassModels.get(
                    className);

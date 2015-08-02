@@ -676,6 +676,7 @@ public class ExpressionList{
                      handled = true;
                   }
                }
+               
                if (!handled && !tail.isForwardBranch() && _instruction.isForwardUnconditionalBranchTarget()) {
 
                   final LinkedList<Branch> forwardUnconditionalBranches = _instruction.getForwardUnconditionalBranches();

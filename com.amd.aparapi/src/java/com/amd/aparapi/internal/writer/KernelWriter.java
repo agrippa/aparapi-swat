@@ -54,6 +54,9 @@ import java.util.*;
 
 public abstract class KernelWriter extends BlockWriter{
 
+   private final static String BROADCAST_VALUE_SIG =
+       "org/apache/spark/broadcast/Broadcast.value()Ljava/lang/Object;";
+
    private final String cvtBooleanToChar = "char ";
 
    private final String cvtBooleanArrayToCharStar = "char* ";
@@ -260,6 +263,7 @@ public abstract class KernelWriter extends BlockWriter{
 
    @Override public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       final int argc = _methodEntry.getStackConsumeCount();
+      final boolean isBroadcasted = _methodEntry.toString().equals(BROADCAST_VALUE_SIG);
       final String methodName =
           _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
       final String methodSignature =
@@ -351,7 +355,21 @@ public abstract class KernelWriter extends BlockWriter{
              } else if (target instanceof AccessArrayElement) {
                AccessArrayElement arrayAccess = (AccessArrayElement)target;
 
-               final Instruction refAccess = arrayAccess.getArrayRef();
+               Instruction refAccess = arrayAccess.getArrayRef();
+               if (refAccess instanceof I_CHECKCAST) {
+                   refAccess = refAccess.getPrevPC();
+               }
+               if (refAccess instanceof I_INVOKEVIRTUAL) {
+                   I_INVOKEVIRTUAL invoke = (I_INVOKEVIRTUAL)refAccess;
+                   MethodEntry callee = invoke.getConstantPoolMethodEntry();
+                   if (callee.toString().equals(BROADCAST_VALUE_SIG)) {
+                       refAccess = refAccess.getPrevPC();
+                   }
+               }
+
+               if (!(refAccess instanceof AccessField)) {
+                   throw new RuntimeException("Expected AccessField but found " + refAccess);
+               }
                //assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
                final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
                      .getNameUTF8Entry().getUTF8();
@@ -392,6 +410,21 @@ public abstract class KernelWriter extends BlockWriter{
                * Do nothing if we're in a constructor calling the
                * java.lang.Object super constructor
                */
+            } else if (isBroadcasted) {
+                /*
+                 * Emit nothing if we're fetching the value for a Spark
+                 * broadcast variable
+                 */
+                if (!(_methodCall instanceof VirtualMethodCall)) {
+                    throw new RuntimeException("Expected virtual method call");
+                }
+
+                Instruction target = ((VirtualMethodCall)_methodCall).getInstanceReference();
+                if (!(target instanceof I_GETFIELD)) {
+                    throw new RuntimeException("Expected GETFIELD");
+                }
+                String fieldName = ((I_GETFIELD)target).getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                write("this->" + fieldName);
             } else {
                // Must be a library call like rsqrt
                if (!isMapped && !isScalaMapped) {
@@ -404,44 +437,47 @@ public abstract class KernelWriter extends BlockWriter{
             write(intrinsicMapping);
          }
 
-         write("(");
+         if (!isBroadcasted) {
+             write("(");
 
-         if ((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) {
+             if ((intrinsicMapping == null) && !isBroadcasted &&
+                     (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) {
 
-            Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
-            if (i instanceof CloneInstruction) {
-              i = ((CloneInstruction)i).getReal();
-            }
+                 Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
+                 if (i instanceof CloneInstruction) {
+                     i = ((CloneInstruction)i).getReal();
+                 }
 
-            if (i instanceof I_ALOAD_0) {
-               write("this");
-            } else if (i instanceof LocalVariableConstIndexLoad) {
-               writeInstruction(i);
-            } else if (i instanceof AccessArrayElement) {
-               final AccessArrayElement arrayAccess = (AccessArrayElement)i;
-               final Instruction refAccess = arrayAccess.getArrayRef();
-               //assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
-               final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
-                     .getNameUTF8Entry().getUTF8();
-               write(" &(this->" + fieldName);
-               write("[");
-               writeInstruction(arrayAccess.getArrayIndex());
-               write("])");
-            } else if (i instanceof New) {
-              // Constructor call
-              assert methodName.equals("<init>");
-              writeInstruction(i);
-            } else {
-               throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
-            }
+                 if (i instanceof I_ALOAD_0) {
+                     write("this");
+                 } else if (i instanceof LocalVariableConstIndexLoad) {
+                     writeInstruction(i);
+                 } else if (i instanceof AccessArrayElement) {
+                     final AccessArrayElement arrayAccess = (AccessArrayElement)i;
+                     final Instruction refAccess = arrayAccess.getArrayRef();
+                     //assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
+                     final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
+                         .getNameUTF8Entry().getUTF8();
+                     write(" &(this->" + fieldName);
+                     write("[");
+                     writeInstruction(arrayAccess.getArrayIndex());
+                     write("])");
+                 } else if (i instanceof New) {
+                     // Constructor call
+                     assert methodName.equals("<init>");
+                     writeInstruction(i);
+                 } else {
+                     throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
+                 }
+             }
+             for (int arg = 0; arg < argc; arg++) {
+                 if (((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) || (arg != 0)) {
+                     write(", ");
+                 }
+                 writeInstruction(_methodCall.getArg(arg));
+             }
+             write(")");
          }
-         for (int arg = 0; arg < argc; arg++) {
-            if (((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) || (arg != 0)) {
-               write(", ");
-            }
-            writeInstruction(_methodCall.getArg(arg));
-         }
-         write(")");
       }
       return writeAllocCheck;
    }
@@ -599,7 +635,9 @@ public abstract class KernelWriter extends BlockWriter{
          String signature = field.getDescriptor();
 
          ScalaParameter param = null;
-         if (signature.startsWith("[")) {
+         if (signature.equals("Lorg/apache/spark/broadcast/Broadcast;")) {
+             //TODO
+         } else if (signature.startsWith("[")) {
              param = new ScalaArrayParameter(signature,
                      field.getName(), ScalaParameter.DIRECTION.IN);
          } else {
@@ -792,6 +830,9 @@ public abstract class KernelWriter extends BlockWriter{
            } else {
                sig = new TypeSignature(returnType);
            }
+           // System.err.println("mm=" + mm.toString());
+           // System.err.println("returnType=" + returnType);
+           // System.err.println("sig=" + sig.toString() + " convertedReturnType=" + convertedReturnType.trim());
            ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
                convertedReturnType.trim(), new SignatureMatcher(sig));
            fullReturnType = cm.getMangledClassName();

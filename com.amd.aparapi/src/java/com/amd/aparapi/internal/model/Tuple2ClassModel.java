@@ -32,6 +32,28 @@ public class Tuple2ClassModel extends HardCodedClassModel {
         descToName(getSecondTypeDesc()).replace('.', '/') + ">";
     }
 
+    @Override
+    public boolean merge(HardCodedClassModel other) {
+        if (other instanceof Tuple2ClassModel) {
+            Tuple2ClassModel otherTuple2 = (Tuple2ClassModel)other;
+            if (otherTuple2.getFirstTypeDesc().equals(this.getFirstTypeDesc()) &&
+                    otherTuple2.getSecondTypeDesc().equals(this.getSecondTypeDesc())) {
+                /*
+                 * Realistically this generally just produces a number of
+                 * duplicate entries, but if one of the HardCodedClassModels was
+                 * marked constructable because it was created from an output
+                 * parameter declaration and the other was not then this will
+                 * ensure that the resulting merged one has the constructor.
+                 */
+                for (HardCodedMethodModel method : other.getMethods()) {
+                    getMethods().add(method);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     public String getFirstTypeDesc() {
       return paramDescs.get(0);
     }

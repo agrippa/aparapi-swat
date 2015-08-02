@@ -163,16 +163,19 @@ public abstract class BlockWriter{
          writeBlock(blockStart, null);
       } else if (instruction instanceof CompositeIfElseInstruction) {
          newLine();
-         write("if (");
+         write("(");
+         // write("if (");
          final Instruction blockStart = writeConditional(instruction.getBranchSet());
-         write(")");
+         write(") ? (");
          Instruction elseGoto = blockStart;
          while (!(elseGoto.isBranch() && elseGoto.asBranch().isUnconditional())) {
             elseGoto = elseGoto.getNextExpr();
          }
          writeBlock(blockStart, elseGoto);
-         write(" else ");
+         write(") : (");
+         // write(" else ");
          writeBlock(elseGoto.getNextExpr(), null);
+         write(");");
       } else if (instruction instanceof CompositeForSunInstruction) {
          newLine();
          write("for (");
@@ -372,12 +375,25 @@ public abstract class BlockWriter{
 
       if (_instruction instanceof CompositeIfElseInstruction) {
          write("(");
+         final Instruction blockStart = writeConditional(((CompositeIfElseInstruction)_instruction).getBranchSet());
+         write(") ? (");
+         Instruction elseGoto = blockStart;
+         while (!(elseGoto.isBranch() && elseGoto.asBranch().isUnconditional())) {
+            elseGoto = elseGoto.getNextExpr();
+         }
+         writeBlock(blockStart, elseGoto);
+         write(") : (");
+         writeBlock(elseGoto.getNextExpr(), null);
+         write(")");
+      } else
+      /* if (_instruction instanceof CompositeIfElseInstruction) {
+         write("(");
          final Instruction lhs = writeConditional(((CompositeInstruction) _instruction).getBranchSet());
          write(")?");
          writeInstruction(lhs);
          write(":");
          writeInstruction(lhs.getNextExpr().getNextExpr());
-      } else if (_instruction instanceof CompositeInstruction) {
+      } else */ if (_instruction instanceof CompositeInstruction) {
          writeComposite((CompositeInstruction) _instruction);
 
       } else if (_instruction instanceof AssignToLocalVariable) {
@@ -543,6 +559,8 @@ public abstract class BlockWriter{
             } else {
                write(value.toString());
             }
+         } else if (constantInstruction instanceof I_ACONST_NULL) {
+             write("NULL");
          } else {
             write(value.toString());
             if (value instanceof Long) {

@@ -2557,17 +2557,23 @@ public abstract class ClassModel {
    public static ClassModel createClassModel(Class<?> _class,
            Entrypoint entryPoint, HardCodedClassModelMatcher matcher)
            throws ClassParseException {
-      HardCodedClassModel hardCoded = null;
+      // System.err.println("Looking up class model for " + _class.getName() + " entryPoint=" + entryPoint);
       if (entryPoint != null) {
-         hardCoded = entryPoint.getHardCodedClassModels().getClassModelFor(
+         HardCodedClassModel hardCoded = entryPoint.getHardCodedClassModels().getClassModelFor(
              _class.getName(), matcher);
-         if (hardCoded != null) return hardCoded;
+         // System.err.println("Calculated hardCoded=" + hardCoded);
+         if (hardCoded != null) {
+             // System.err.println("Returning hard-coded class\n");
+             return hardCoded;
+         }
       }
 
       if (CacheEnabler.areCachesEnabled()) {
+          // System.err.println("Returning cached class model\n");
           return classModelCache.computeIfAbsent(_class);
       }
 
+      // System.err.println("Returning loaded class\n");
       return new LoadedClassModel(_class);
    }
 

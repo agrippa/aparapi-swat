@@ -62,6 +62,7 @@ public class Entrypoint implements Cloneable {
    private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
    private final List<ClassModel.ClassModelField> referencedClassModelFields = new ArrayList<ClassModel.ClassModelField>();
+   private final List<Boolean> isBroadcasted = new ArrayList<Boolean>();
 
    private final List<Field> referencedFields = new ArrayList<Field>();
 
@@ -77,21 +78,48 @@ public class Entrypoint implements Cloneable {
 
    private final boolean fallback = false;
 
+   public static class DerivedFieldInfo {
+       private String hint;
+       private boolean isBroadcast;
+
+       public DerivedFieldInfo(String hint, boolean isBroadcast) {
+           this.hint = hint;
+           this.isBroadcast = isBroadcast;
+       }
+
+       public String getHint() {
+           return hint;
+       }
+       public boolean checkIsBroadcast() {
+           return isBroadcast;
+       }
+
+       public void update(String newHint, boolean newIsBroadcast) {
+           if (newHint != null) {
+               hint = newHint;
+           }
+           assert isBroadcast == newIsBroadcast;
+       }
+   }
    /*
     * A mapping from referenced fields to hints to their actual types. Some
     * fields may have their types obscured by Scala bytecode obfuscation (e.g.
     * scala.runtime.ObjectRef) but we can take guesses at the actual type based
     * on the references to them (e.g. if they are cast to something).
     */
-   private final Map<String, String> referencedFieldNames = new HashMap<String, String>();
-   private void addToReferencedFieldNames(String name, String hint) {
+   private final Map<String, DerivedFieldInfo> referencedFieldNames =
+       new HashMap<String, DerivedFieldInfo>();
+
+   private void addToReferencedFieldNames(String name, String hint, boolean isBroadcast) {
      if (referencedFieldNames.containsKey(name)) {
-       if (hint != null) {
-         referencedFieldNames.put(name, hint);
-       }
+       referencedFieldNames.get(name).update(hint, isBroadcast);
      } else {
-       referencedFieldNames.put(name, hint);
+       referencedFieldNames.put(name, new DerivedFieldInfo(hint, isBroadcast));
      }
+   }
+
+   private void addToReferencedFieldNames(String name, String hint) {
+       addToReferencedFieldNames(name, hint, false);
    }
 
    private final Set<String> arrayFieldAssignments = new LinkedHashSet<String>();
@@ -519,13 +547,20 @@ public class Entrypoint implements Cloneable {
          String targetMethodOwner = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
          final Set<ClassModel> possibleMatches = new HashSet<ClassModel>();
 
+         // System.err.println("Looking for method call to " + targetMethodOwner +
+         //         " " + methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + " " +
+         //         methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8());
+
          for (ClassModel c : allFieldsClasses) {
             if (c.getClassWeAreModelling().getName().equals(targetMethodOwner)) {
+               // System.err.println("c=" + c.toString());
                m = c.getMethod(methodEntry, (methodCall instanceof I_INVOKESPECIAL) ? true : false);
             } else if (c.classNameMatches(targetMethodOwner)) {
                possibleMatches.add(c);
             }
          }
+         // System.err.println("m=" + m + ", possibleMatches.size()=" + possibleMatches.size());
+
 
          if (m == null) {
              for (ClassModel c : possibleMatches) {
@@ -574,6 +609,9 @@ public class Entrypoint implements Cloneable {
    public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
            Object _k, Collection<ScalaArrayParameter> params, HardCodedClassModels setHardCodedClassModels)
            throws AparapiException {
+      // System.err.println("Creating Entrypoint for " +
+      //         _classModel.getClassWeAreModelling().getName() + " " +
+      //         _methodModel.getName());
       classModel = _classModel;
       methodModel = _methodModel;
       kernelInstance = _k;
@@ -761,12 +799,43 @@ public class Entrypoint implements Cloneable {
                     addToReferencedFieldNames(accessedFieldName, "L" + signature);
                   } else {
                     signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-                    addToReferencedFieldNames(accessedFieldName, null);
+                    if (signature.equals("Lorg/apache/spark/broadcast/Broadcast;")) {
+                        Instruction next = instruction.getNextPC();
+                        assert next instanceof I_INVOKEVIRTUAL;
+                        Instruction next_next = next.getNextPC();
+                        assert next_next instanceof I_CHECKCAST;
+                        final String typeName = ((I_CHECKCAST)next_next).getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+                        if (!typeName.startsWith("[")) {
+                            throw new RuntimeException("Broadcast variables " +
+                                    "should always have an array type");
+                        }
+                        addToReferencedFieldNames(accessedFieldName, typeName, true);
+                        if (typeName.substring(1).startsWith("L")) {
+                            // Broadcast variable is an array of objects
+                            final String className = (typeName.substring(2,
+                                        typeName.length() - 1)).replace('/', '.');
+                            lexicalOrdering.add(className);
+
+                            HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
+                                @Override
+                                    public boolean matches(HardCodedClassModel model) {
+                                        return className.equals(model.getClassWeAreModelling().getName());
+                                    }
+                            };
+                            final ClassModel arrayFieldModel =
+                                getOrUpdateAllClassAccesses(className, matcher);
+                            addToObjectArrayFieldsClasses(className, arrayFieldModel);
+                        }
+                    } else {
+                        addToReferencedFieldNames(accessedFieldName, null);
+                    }
                   }
 
                   if (logger.isLoggable(Level.FINE)) {
                      logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
                   }
+
+                  // System.err.println("name=" + accessedFieldName + " signature=" + signature + ", in " + methodModel.getName());
 
                   // Add the class model for the referenced obj array
                   if (signature.startsWith("[L")) {
@@ -898,9 +967,11 @@ public class Entrypoint implements Cloneable {
             }
          }
 
-         for (final Map.Entry<String, String> referencedField : referencedFieldNames.entrySet()) {
+         for (final Map.Entry<String, DerivedFieldInfo> referencedField :
+                 referencedFieldNames.entrySet()) {
             String referencedFieldName = referencedField.getKey();
-            String typeHint = referencedField.getValue(); // may be null
+            DerivedFieldInfo fieldInfo = referencedField.getValue(); // may be null
+            String typeHint = fieldInfo.getHint();
 
             try {
                final Class<?> clazz = classModel.getClassWeAreModelling();
@@ -908,9 +979,13 @@ public class Entrypoint implements Cloneable {
                if (field != null) {
                   referencedFields.add(field);
                   final ClassModelField ff = classModel.getField(referencedFieldName);
-                  assert ff != null : "ff should not be null for " + clazz.getName() + "." + referencedFieldName;
+                  if (ff == null) {
+                     throw new RuntimeException("ff should not be null for " +
+                             clazz.getName() + "." + referencedFieldName);
+                  }
                   if (typeHint != null) ff.setTypeHint(typeHint);
                   referencedClassModelFields.add(ff);
+                  isBroadcasted.add(fieldInfo.checkIsBroadcast());
                }
             } catch (final SecurityException e) {
                e.printStackTrace();
@@ -1051,6 +1126,15 @@ public class Entrypoint implements Cloneable {
    public List<ClassModel.ClassModelField> getReferencedClassModelFields() {
       return (referencedClassModelFields);
    }
+   public boolean isBroadcastField(ClassModel.ClassModelField field) {
+       assert referencedClassModelFields.size() == isBroadcasted.size();
+       for (int i = 0; i < referencedClassModelFields.size(); i++) {
+           if (referencedClassModelFields.get(i) == field) {
+               return isBroadcasted.get(i);
+           }
+       }
+       throw new RuntimeException();
+   }
 
    public List<Field> getReferencedFields() {
       return (referencedFields);
@@ -1060,7 +1144,7 @@ public class Entrypoint implements Cloneable {
       return calledMethods;
    }
 
-   public Map<String, String> getReferencedFieldNames() {
+   public Map<String, DerivedFieldInfo> getReferencedFieldNames() {
       return (referencedFieldNames);
    }
 
@@ -1114,16 +1198,21 @@ public class Entrypoint implements Cloneable {
              isMapped);
       }
 
-      final String entryClassNameInDotForm =
+      String entryClassNameInDotForm =
           _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/',
               '.');
+      if (entryClassNameInDotForm.startsWith("scala.Tuple2")) {
+          entryClassNameInDotForm = "scala.Tuple2";
+      }
       final Set<ClassModel> matchingClassModels = new HashSet<ClassModel>();
+      // System.err.println("entryClassNameInDotForm=" + entryClassNameInDotForm + ", target=" + target);
 
       if (target == null) {
          // Look for member obj accessor calls
          for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
 
            String memberObjClassName = memberObjClass.getClassWeAreModelling().getName();
+           // System.err.println("  memberObjClassName=" + memberObjClassName);
            if (memberObjClassName.equals(entryClassNameInDotForm)) {
                MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
                    memberObjClass);
