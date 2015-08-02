@@ -370,6 +370,30 @@ public abstract class BlockWriter{
       return ("(" + raw + ")");
    }
 
+   private static boolean isBroadcastedObjectArray(Instruction target) {
+     if (!(target instanceof I_CHECKCAST)) {
+         return false;
+     }
+     I_CHECKCAST cast = (I_CHECKCAST)target;
+     if (!(cast.getPrevPC() instanceof I_INVOKEVIRTUAL)) {
+         return false;
+     }
+     I_INVOKEVIRTUAL call = (I_INVOKEVIRTUAL)cast.getPrevPC();
+     if (!call.getConstantPoolMethodEntry().toString().equals(KernelWriter.BROADCAST_VALUE_SIG)) {
+         return false;
+     }
+     if (!(call.getPrevPC() instanceof I_GETFIELD)) {
+         return false;
+     }
+
+     String typeName = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+     if (!typeName.startsWith("[")) {
+         throw new RuntimeException("All broadcasted variables should be array-typed");
+     }
+     typeName = typeName.substring(1);
+     return typeName.startsWith("L");
+   }
+
    public boolean writeInstruction(Instruction _instruction) throws CodeGenException {
       boolean writeCheck = false;
 
@@ -450,7 +474,9 @@ public abstract class BlockWriter{
 
          //object array, get address
          boolean isMultiDimensional = arrayLoadInstruction instanceof I_AALOAD && isMultiDimensionalArray(arrayLoadInstruction);
-         if (isMultiDimensional) {
+         boolean broadcastedObject =
+             isBroadcastedObjectArray(arrayLoadInstruction.getArrayRef());
+         if (isMultiDimensional || broadcastedObject) {
             write("(&");
          }
          writeInstruction(arrayLoadInstruction.getArrayRef());
@@ -477,7 +503,7 @@ public abstract class BlockWriter{
          write("]");
 
          //object array, close parentheses
-         if (isMultiDimensional) {
+         if (isMultiDimensional || broadcastedObject) {
             write(")");
          }
       } else if (_instruction instanceof AccessField) {
@@ -793,6 +819,12 @@ public abstract class BlockWriter{
          load = load.getFirstChild();
       }
 
+      if (load instanceof I_CHECKCAST &&
+              load.getPrevPC() instanceof I_INVOKEVIRTUAL &&
+              ((I_INVOKEVIRTUAL)load.getPrevPC()).getConstantPoolMethodEntry().toString().equals(
+                    KernelWriter.BROADCAST_VALUE_SIG)) {
+        load = load.getPrevPC().getPrevPC();
+      }
       return (AccessInstanceField) load;
    }
 
@@ -919,7 +951,7 @@ public abstract class BlockWriter{
            if (fullSig.charAt(0) != '[') {
                throw new RuntimeException(fullSig);
            }
-
+           
            String eleSig = fullSig.substring(1);
            if (eleSig.indexOf('<') != -1) {
                String topLevelType = eleSig.substring(0, eleSig.indexOf('<'));

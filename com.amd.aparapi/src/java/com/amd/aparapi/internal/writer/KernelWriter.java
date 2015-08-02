@@ -54,7 +54,7 @@ import java.util.*;
 
 public abstract class KernelWriter extends BlockWriter{
 
-   private final static String BROADCAST_VALUE_SIG =
+   public final static String BROADCAST_VALUE_SIG =
        "org/apache/spark/broadcast/Broadcast.value()Ljava/lang/Object;";
 
    private final String cvtBooleanToChar = "char ";
@@ -271,8 +271,11 @@ public abstract class KernelWriter extends BlockWriter{
       final String methodClass =
           _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
 
-      if (methodName.equals("<init>") && !_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
-          writeConstructorCall(new ConstructorCall(((Instruction)_methodCall).getMethod(), (I_INVOKESPECIAL)_methodCall, null));
+      if (methodName.equals("<init>") && !_methodEntry.toString().equals(
+                  "java/lang/Object.<init>()V")) {
+          writeConstructorCall(new ConstructorCall(
+                      ((Instruction)_methodCall).getMethod(),
+                      (I_INVOKESPECIAL)_methodCall, null));
           return false;
       }
 
@@ -400,6 +403,7 @@ public abstract class KernelWriter extends BlockWriter{
 
             Set<String> scalaMapped = new HashSet<String>();
             scalaMapped.add("scala/math/package$.sqrt(D)D");
+            scalaMapped.add("scala/math/package$.pow(DD)D");
 
             boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
 
