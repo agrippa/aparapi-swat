@@ -2810,11 +2810,24 @@ public abstract class ClassModel {
    private int structMemberId = 0;
 
    protected final List<FieldDescriptor> structMemberInfo = new LinkedList<FieldDescriptor>();
+   protected FieldDescriptor[] structMemberInfoArr = null;
 
    private int totalStructSize = 0;
 
    public ArrayList<FieldNameInfo> getStructMembers() {
       return structMembers;
+   }
+
+   public FieldDescriptor[] getStructMemberInfoArray() {
+       if (structMemberInfoArr == null) {
+           structMemberInfoArr = new FieldDescriptor[structMemberInfo.size()];
+           int index = 0;
+           for (FieldDescriptor fd : structMemberInfo) {
+               structMemberInfoArr[index] = fd;
+               index++;
+           }
+       }
+       return structMemberInfoArr;
    }
 
    public List<FieldDescriptor> getStructMemberInfo() {
