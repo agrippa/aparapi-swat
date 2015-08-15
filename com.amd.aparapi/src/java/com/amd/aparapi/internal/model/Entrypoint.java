@@ -1077,6 +1077,7 @@ public class Entrypoint implements Cloneable {
 
                              totalSize += fSize;
                           }
+                          c.generateStructMemberArray();
                        }
 
                        // compute total size for OpenCL buffer

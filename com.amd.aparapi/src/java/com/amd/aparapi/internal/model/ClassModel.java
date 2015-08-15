@@ -2818,15 +2818,17 @@ public abstract class ClassModel {
       return structMembers;
    }
 
-   public FieldDescriptor[] getStructMemberInfoArray() {
-       if (structMemberInfoArr == null) {
+   public void generateStructMemberArray() {
+       if (structMemberInfoArr == null || structMemberInfo.size() != structMemberInfoArr.length) {
            structMemberInfoArr = new FieldDescriptor[structMemberInfo.size()];
-           int index = 0;
-           for (FieldDescriptor fd : structMemberInfo) {
-               structMemberInfoArr[index] = fd;
-               index++;
-           }
        }
+       int index = 0;
+       for (FieldDescriptor fd : structMemberInfo) {
+           structMemberInfoArr[index++] = fd;
+       }
+   }
+
+   public FieldDescriptor[] getStructMemberInfoArray() {
        return structMemberInfoArr;
    }
 
