@@ -1096,14 +1096,24 @@ public class Entrypoint implements Cloneable {
       }
    }
 
+   private final Map<String, Integer> sizeOfCache = new HashMap<String, Integer>();
+
    public int getSizeOf(String desc) {
        if (desc.equals("Z")) desc = "B";
 
        if (desc.startsWith("L")) {
+           if (sizeOfCache.containsKey(desc)) {
+               return sizeOfCache.get(desc);
+           }
+
            for (final ClassModel cm : objectArrayFieldsClasses) {
              String classDesc = "L" + cm.getClassWeAreModelling().getName() + ";";
              if (classDesc.equals(desc)) {
-               return cm.getTotalStructSize();
+               final int size = cm.getTotalStructSize();
+               if (size > 0) {
+                   sizeOfCache.put(desc, cm.getTotalStructSize());
+               }
+               return size;
              }
            }
        }

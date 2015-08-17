@@ -2810,7 +2810,13 @@ public abstract class ClassModel {
    private int structMemberId = 0;
 
    protected final List<FieldDescriptor> structMemberInfo = new LinkedList<FieldDescriptor>();
-   protected FieldDescriptor[] structMemberInfoArr = null;
+
+   public static final int INT = 0;
+   public static final int FLOAT = 1;
+   public static final int DOUBLE = 2;
+   protected int[] types = null;
+   protected int[] sizes = null;
+   protected long[] offsets = null;
 
    private int totalStructSize = 0;
 
@@ -2819,17 +2825,44 @@ public abstract class ClassModel {
    }
 
    public void generateStructMemberArray() {
-       if (structMemberInfoArr == null || structMemberInfo.size() != structMemberInfoArr.length) {
-           structMemberInfoArr = new FieldDescriptor[structMemberInfo.size()];
+       if (types == null || structMemberInfo.size() != types.length) {
+           types = new int[structMemberInfo.size()];
+           sizes = new int[structMemberInfo.size()];
+           offsets = new long[structMemberInfo.size()];
        }
        int index = 0;
        for (FieldDescriptor fd : structMemberInfo) {
-           structMemberInfoArr[index++] = fd;
+           switch (fd.typ) {
+               case I:
+                   types[index] = INT;
+                   sizes[index] = 4;
+                   break;
+               case F:
+                   types[index] = FLOAT;
+                   sizes[index] = 4;
+                   break;
+               case D:
+                   types[index] = DOUBLE;
+                   sizes[index] = 8;
+                   break;
+               default:
+                   throw new RuntimeException("Unexpected type " +
+                           fd.typ.name());
+           }
+           offsets[index] = fd.offset;
+           index++;
        }
    }
 
-   public FieldDescriptor[] getStructMemberInfoArray() {
-       return structMemberInfoArr;
+   public int[] getStructMemberSizes() {
+       return sizes;
+   }
+
+   public int[] getStructMemberTypes() {
+       return types;
+   }
+   public long[] getStructMemberOffsets() {
+       return offsets;
    }
 
    public List<FieldDescriptor> getStructMemberInfo() {
