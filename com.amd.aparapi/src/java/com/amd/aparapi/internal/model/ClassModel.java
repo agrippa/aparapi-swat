@@ -2629,6 +2629,9 @@ public abstract class ClassModel {
     */
    private void parse(ClassLoader _classLoader, String _className) throws ClassParseException {
       String classFilename = _className.replace('.', '/') + ".class";
+      if (_classLoader == null) {
+        throw new RuntimeException("Null class loader for class name = " + _className);
+      }
       InputStream stream = _classLoader.getResourceAsStream(classFilename);
       if (stream == null) {
         throw new RuntimeException("Unable to resolve " + classFilename);
@@ -2817,6 +2820,7 @@ public abstract class ClassModel {
    protected int[] types = null;
    protected int[] sizes = null;
    protected long[] offsets = null;
+   protected String[] names = null;
 
    private int totalStructSize = 0;
 
@@ -2829,6 +2833,7 @@ public abstract class ClassModel {
            types = new int[structMemberInfo.size()];
            sizes = new int[structMemberInfo.size()];
            offsets = new long[structMemberInfo.size()];
+           names = new String[structMemberInfo.size()];
        }
        int index = 0;
        for (FieldDescriptor fd : structMemberInfo) {
@@ -2850,8 +2855,13 @@ public abstract class ClassModel {
                            fd.typ.name());
            }
            offsets[index] = fd.offset;
+           names[index] = fd.name;
            index++;
        }
+   }
+
+   public String[] getStructMemberNames() {
+       return names;
    }
 
    public int[] getStructMemberSizes() {

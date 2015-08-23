@@ -92,6 +92,8 @@ public class UnsafeWrapper{
 
    private static Method compareAndSwapIntMethod;
 
+   private static Method addressSizeMethod;
+
    static {
       try {
          final Class<?> uc = Class.forName("sun.misc.Unsafe");
@@ -117,6 +119,7 @@ public class UnsafeWrapper{
          putLongMethod = uc.getDeclaredMethod("putLong", Object.class, long.class, long.class);
          putByteMethod = uc.getDeclaredMethod("putByte", Object.class, long.class, byte.class);
          compareAndSwapIntMethod = uc.getDeclaredMethod("compareAndSwapInt", Object.class, long.class, int.class, int.class);
+         addressSizeMethod = uc.getDeclaredMethod("addressSize");
       } catch (final SecurityException e) {
          // TODO Auto-generated catch block
          e.printStackTrace();
@@ -163,6 +166,16 @@ public class UnsafeWrapper{
             e.printStackTrace();
          }
       }
+   }
+
+   public static int addressSize() {
+      int size = 0;
+      try {
+          size = (Integer)(addressSizeMethod.invoke(unsafe));
+      } catch (Exception e) {
+          throw new RuntimeException(e);
+      }
+      return size;
    }
 
    public static int arrayBaseOffset(Class<?> _arrayClass) {
