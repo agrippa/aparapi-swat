@@ -64,7 +64,7 @@ public class DenseVectorClassModel extends HardCodedClassModel {
                 StringBuilder sb = new StringBuilder();
                 sb.append("static double " + method.getName() + "(__global " +
                         owner + " *this, int index) {\n");
-                sb.append("    return (this->values)[index];\n");
+                sb.append("    return (this->values)[32 * index];\n");
                 sb.append("}");
                 return sb.toString();
             }
