@@ -615,6 +615,23 @@ public class Entrypoint implements Cloneable {
       return m;
    }
 
+   boolean isSparseVectorIndicesOrValues(Instruction insn) {
+       if (insn instanceof I_INVOKEVIRTUAL) {
+           final MethodEntry methodEntry = ((I_INVOKEVIRTUAL)insn).getConstantPoolMethodEntry();
+           final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+           final String methodDesc =
+             methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+           final String owner = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+           if (owner.equals("org/apache/spark/mllib/linalg/SparseVector")) {
+               if ((methodName.equals("indices") && methodDesc.equals("()[I")) ||
+                       (methodName.equals("values") && methodDesc.equals("()[D"))) {
+                   return true;
+               }
+           }
+       }
+       return false;
+   }
+
    public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
            Object _k, Collection<ScalaArrayParameter> params, HardCodedClassModels setHardCodedClassModels)
            throws AparapiException {
@@ -752,6 +769,21 @@ public class Entrypoint implements Cloneable {
 
             for (Instruction instruction = methodModel.getPCHead(); instruction != null; instruction =
                 instruction.getNextPC()) {
+
+               if (instruction instanceof AssignToLocalVariable) {
+                   int countChildren = 0;
+                   for (Instruction operand = instruction.getFirstChild();
+                           operand != null; operand = operand.getNextExpr()) {
+                       countChildren ++;
+                   }
+                   if (countChildren == 1) {
+                       Instruction child = instruction.getFirstChild();
+                       if (isSparseVectorIndicesOrValues(child)) {
+                           throw new RuntimeException("Assigning from the indices " +
+                                   "or values of a MLLib Sparse Vector is not supported");
+                       }
+                   }
+               }
 
                if (instruction instanceof AssignToArrayElement) {
                   final AssignToArrayElement assignment = (AssignToArrayElement) instruction;

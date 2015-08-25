@@ -1093,6 +1093,11 @@ public abstract class BlockWriter{
                return "__global " + type.replace('.', '_') + "* " + name +
                    ", __global double *" + name + "_values, __global int *" +
                    name + "_sizes, __global int *" + name + "_offsets";
+           } else if (type.equals(KernelWriter.SPARSEVECTOR_CLASSNAME)) {
+               return "__global " + type.replace('.', '_') + "* " + name +
+                   ", __global int *" + name + "_indices, __global double *" +
+                   name + "_values, __global int *" + name +
+                   "_sizes, __global int *" + name + "_offsets";
            } else {
                return "__global " + type.replace('.', '_') + "* " + name;
            }

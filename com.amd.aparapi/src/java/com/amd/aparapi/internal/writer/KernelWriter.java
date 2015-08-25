@@ -58,6 +58,7 @@ public abstract class KernelWriter extends BlockWriter{
        "org/apache/spark/broadcast/Broadcast.value()Ljava/lang/Object;";
    public final static String TUPLE2_CLASSNAME = "scala.Tuple2";
    public final static String DENSEVECTOR_CLASSNAME = "org.apache.spark.mllib.linalg.DenseVector";
+   public final static String SPARSEVECTOR_CLASSNAME = "org.apache.spark.mllib.linalg.SparseVector";
 
    private final String cvtBooleanToChar = "char ";
 
@@ -885,7 +886,8 @@ public abstract class KernelWriter extends BlockWriter{
 
          final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
          for (final LocalVariableInfo lvi : lvte) {
-            if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) || mm.getMethod().isStatic())) { // full scope but skip this
+            if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
+                        mm.getMethod().isStatic())) { // full scope but skip this
                final String descriptor = lvi.getVariableDescriptor();
                if (alreadyHasFirstArg) {
                   write(", ");
@@ -1017,6 +1019,12 @@ public abstract class KernelWriter extends BlockWriter{
                } else if (p.getClazz().getName().equals(DENSEVECTOR_CLASSNAME)) {
                  writeln("my_" + p.getName() + "->values = " + p.getName() +
                          "_values + " + p.getName() + "_offsets[i];");
+                 writeln("my_" + p.getName() + "->size = " + p.getName() + "_sizes[i];");
+               } else if (p.getClazz().getName().equals(SPARSEVECTOR_CLASSNAME)) {
+                 writeln("my_" + p.getName() + "->values = " + p.getName() +
+                         "_values + " + p.getName() + "_offsets[i];");
+                 writeln("my_" + p.getName() + "->indices = " + p.getName() +
+                         "_indices + " + p.getName() + "_offsets[i];");
                  writeln("my_" + p.getName() + "->size = " + p.getName() + "_sizes[i];");
                }
              }
