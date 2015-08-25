@@ -37,6 +37,8 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
            List<HardCodedClassModel> classModels = hardCodedClassModels.get(
                    className);
 
+           matcher.checkPreconditions(classModels);
+
            for (HardCodedClassModel model : classModels) {
                if (matcher.matches(model)) {
                    return model;
@@ -61,6 +63,7 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
 
     public abstract static class HardCodedClassModelMatcher {
         public abstract boolean matches(HardCodedClassModel model);
+        public abstract void checkPreconditions(List<HardCodedClassModel> classModels);
     }
 
     public static class DescMatcher extends HardCodedClassModelMatcher {
@@ -69,6 +72,9 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
          public DescMatcher(String[] desc) {
              this.desc = desc;
          }
+
+         @Override
+         public void checkPreconditions(List<HardCodedClassModel> classModels) { }
 
          @Override
          public boolean matches(HardCodedClassModel model) {
@@ -99,7 +105,34 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
          }
     }
 
+    public static class UnparameterizedMatcher extends HardCodedClassModelMatcher {
+
+        @Override
+        public void checkPreconditions(List<HardCodedClassModel> classModels) {
+            if (classModels.size() != 1) {
+              throw new RuntimeException("The UnparameterizedMatcher should " +
+                      "only be called for unparameterized classes that only " +
+                      "have one entry in the HardCodedClassModels mapping, " +
+                      "this one seems to have " + classModels.size() +
+                      " mappings");
+            }
+        }
+
+        @Override
+        public boolean matches(HardCodedClassModel model) {
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return "UnparameterizedMatcher";
+        }
+    }
+
     public static class ShouldNotCallMatcher extends HardCodedClassModelMatcher {
+        @Override
+        public void checkPreconditions(List<HardCodedClassModel> classModels) { }
+
         @Override
         public boolean matches(HardCodedClassModel model) {
             throw new RuntimeException("This matcher should only be used on " +

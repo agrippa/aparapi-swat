@@ -372,6 +372,9 @@ public class Entrypoint implements Cloneable {
                final String returnType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
                HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
                    @Override
+                   public void checkPreconditions(List<HardCodedClassModel> classModels) { }
+
+                   @Override
                    public boolean matches(HardCodedClassModel model) {
                        // TODO use _methodCall and _methodEntry?
                        TypeParameters params = model.getTypeParamDescs();
@@ -432,6 +435,9 @@ public class Entrypoint implements Cloneable {
       }
 
       HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher () {
+          @Override
+          public void checkPreconditions(List<HardCodedClassModel> classModels) { }
+
           @Override
           public boolean matches(HardCodedClassModel model) {
               // TODO can we use the type of field to infer the right Tuple2? Maybe we need to have per-type HardCodedClassModel matches?
@@ -584,6 +590,9 @@ public class Entrypoint implements Cloneable {
          String otherClassName =
              methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
          HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
+             @Override
+             public void checkPreconditions(List<HardCodedClassModel> classModels) { }
+
              @Override
              public boolean matches(HardCodedClassModel model) {
                  // TODO use _methodCall and _methodEntry?
@@ -818,6 +827,9 @@ public class Entrypoint implements Cloneable {
 
                             HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
                                 @Override
+                                public void checkPreconditions(List<HardCodedClassModel> classModels) { }
+
+                                @Override
                                     public boolean matches(HardCodedClassModel model) {
                                         return className.equals(model.getClassWeAreModelling().getName());
                                     }
@@ -842,6 +854,9 @@ public class Entrypoint implements Cloneable {
                      // Turn [Lcom/amd/javalabs/opencl/demo/DummyOOA; into com.amd.javalabs.opencl.demo.DummyOOA for example
                      final String className = (signature.substring(2, signature.length() - 1)).replace('/', '.');
                      HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
+                         @Override
+                         public void checkPreconditions(List<HardCodedClassModel> classModels) { }
+
                          @Override
                          public boolean matches(HardCodedClassModel model) {
                              return className.equals(model.getClassWeAreModelling().getName());

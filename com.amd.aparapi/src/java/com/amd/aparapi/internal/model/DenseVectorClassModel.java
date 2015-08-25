@@ -35,7 +35,7 @@ public class DenseVectorClassModel extends HardCodedClassModel {
         return (other instanceof DenseVectorClassModel);
     }
 
-    public static DenseVectorClassModel create() {
+    public static DenseVectorClassModel create(final int tiling) {
         List<HardCodedMethodModel> methods = new ArrayList<HardCodedMethodModel>();
 
         MethodDefGenerator sizeGen = new MethodDefGenerator<DenseVectorClassModel>() {
@@ -64,7 +64,7 @@ public class DenseVectorClassModel extends HardCodedClassModel {
                 StringBuilder sb = new StringBuilder();
                 sb.append("static double " + method.getName() + "(__global " +
                         owner + " *this, int index) {\n");
-                sb.append("    return (this->values)[32 * index];\n");
+                sb.append("    return (this->values)[" + tiling + " * index];\n");
                 sb.append("}");
                 return sb.toString();
             }
