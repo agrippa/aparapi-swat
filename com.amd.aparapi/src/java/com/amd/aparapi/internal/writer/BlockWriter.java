@@ -68,6 +68,8 @@ public abstract class BlockWriter{
    public abstract void write(String _string);
 
    public abstract void writeBeforeCurrentLine(String _string);
+   public abstract void markCurrentPosition();
+   public abstract String eraseToMark();
 
    public abstract String getAllocCheck();
 
@@ -800,6 +802,9 @@ public abstract class BlockWriter{
         // Do nothing
         I_CHECKCAST checkCast = (I_CHECKCAST)_instruction;
         writeInstruction(checkCast.getPrevPC());
+      } else if (_instruction instanceof I_NEWARRAY) {
+        I_NEWARRAY newArray = (I_NEWARRAY)_instruction;
+        writePrimitiveArrayAlloc(newArray);
       } else if (_instruction instanceof New) {
         // Skip it?
       } else {
@@ -812,6 +817,7 @@ public abstract class BlockWriter{
 
    public abstract void writeConstructorCall(ConstructorCall call) throws CodeGenException;
    public abstract void writeReturn(Return ret) throws CodeGenException;
+   public abstract void writePrimitiveArrayAlloc(I_NEWARRAY newArray) throws CodeGenException;
 
    private boolean isMultiDimensionalArray(NameAndTypeEntry nameAndTypeEntry) {
       return nameAndTypeEntry.getDescriptorUTF8Entry().getUTF8().startsWith("[[");

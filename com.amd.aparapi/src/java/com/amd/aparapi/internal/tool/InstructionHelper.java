@@ -7,6 +7,7 @@ import java.util.List;
 
 import com.amd.aparapi.internal.exception.CodeGenException;
 import com.amd.aparapi.internal.instruction.Instruction;
+import com.amd.aparapi.internal.instruction.InstructionSet.I_NEWARRAY;
 import com.amd.aparapi.internal.instruction.InstructionSet.AssignToLocalVariable;
 import com.amd.aparapi.internal.instruction.InstructionSet.Branch;
 import com.amd.aparapi.internal.instruction.InstructionSet.ByteCode;
@@ -164,6 +165,10 @@ public class InstructionHelper{
         // TODO
       }
 
+      @Override public void writePrimitiveArrayAlloc(I_NEWARRAY newArray) throws CodeGenException {
+          // TODO
+      }
+
       @Override public void writeReturn(Return ret) throws CodeGenException {
         // TODO
       }
@@ -171,6 +176,15 @@ public class InstructionHelper{
       @Override public String getAllocCheck() {
         // TODO
         return null;
+      }
+
+      @Override public void markCurrentPosition() {
+          // TODO
+      }
+
+      @Override public String eraseToMark() {
+          // TODO
+          return null;
       }
 
       @Override public void writeMethodBody(MethodModel _methodModel) throws CodeGenException {

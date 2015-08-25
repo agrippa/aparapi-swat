@@ -221,6 +221,47 @@ public abstract class KernelWriter extends BlockWriter{
      return indentedCheckStr;
    }
 
+   private String generateAllocHelper(String allocVarName, String size, String typeName) {
+     String allocStr = "__global " + typeName + " * " + allocVarName +
+       " = (__global " + typeName + " *)alloc(this->heap, this->free_index, " +
+       "this->heap_size, " + size + ", &this->alloc_failed);";
+     String indentedAllocStr = doIndent(allocStr);
+
+     String indentedCheckStr = getAllocCheck();
+
+     StringBuilder allocLine = new StringBuilder();
+     allocLine.append(indentedAllocStr);
+     allocLine.append("\n");
+     allocLine.append(indentedCheckStr);
+     return allocLine.toString();
+   }
+
+   @Override public void writePrimitiveArrayAlloc(I_NEWARRAY newArray) throws CodeGenException {
+       final String typeStr;
+       switch (newArray.getType()) {
+           case (6): // FLOAT
+               typeStr = "float";
+               break;
+           case (7): // DOUBLE
+               typeStr = "double";
+               break;
+           case (10): // INT
+               typeStr = "int";
+               break;
+           default:
+               throw new RuntimeException("Unsupported type=" + newArray.getType());
+       }
+       String allocVarName = "__alloc" + (countAllocs++);
+
+       markCurrentPosition();
+       writeInstruction(newArray.getFirstChild());
+       String countStr = eraseToMark();
+       String allocStr = generateAllocHelper(allocVarName, "sizeof(" + typeStr +
+               ") * (" + countStr + ")", typeStr);
+       writeBeforeCurrentLine(allocStr);
+       write(allocVarName);
+   }
+
    @Override public void writeConstructorCall(ConstructorCall call) throws CodeGenException {
      I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
 
@@ -239,20 +280,10 @@ public abstract class KernelWriter extends BlockWriter{
      write(m.getName());
      write("(");
 
-     String typeName = m.getOwnerClassMangledName();
      String allocVarName = "__alloc" + (countAllocs++);
-     String allocStr = "__global " + typeName + " * " + allocVarName +
-       " = (__global " + typeName + " *)alloc(this->heap, this->free_index, this->heap_size, " + 
-       "sizeof(" + typeName + "), &this->alloc_failed);";
-     String indentedAllocStr = doIndent(allocStr);
-
-     String indentedCheckStr = getAllocCheck();
-
-     StringBuilder allocLine = new StringBuilder();
-     allocLine.append(indentedAllocStr);
-     allocLine.append("\n");
-     allocLine.append(indentedCheckStr);
-     writeBeforeCurrentLine(allocLine.toString());
+     String typeName = m.getOwnerClassMangledName();
+     String allocStr = generateAllocHelper(allocVarName, "sizeof(" + typeName + ")", typeName);
+     writeBeforeCurrentLine(allocStr);
 
      write(allocVarName);
 
@@ -1088,7 +1119,7 @@ public abstract class KernelWriter extends BlockWriter{
                      write(outParam.getName() + "[i] = *result;");
                  }
              } else {
-                 write(outParam.getName() + "[i] = result;");
+                 // write(outParam.getName() + "[i] = result;");
              }
            }
            out();
@@ -1201,10 +1232,32 @@ public abstract class KernelWriter extends BlockWriter{
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){
          private int writtenSinceLastNewLine = 0;
+         private int mark = -1;
 
          @Override public void writeBeforeCurrentLine(String _string) {
            openCLStringBuilder.insert(openCLStringBuilder.length() -
                writtenSinceLastNewLine, _string + "\n");
+         }
+
+
+         @Override public void markCurrentPosition() {
+             if (mark != -1) {
+                 throw new RuntimeException("Duplicated mark");
+             }
+             mark = openCLStringBuilder.length();
+         }
+
+         @Override public String eraseToMark() {
+             if (mark == -1) {
+                 throw new RuntimeException("Missing mark");
+             }
+
+
+             final String result = openCLStringBuilder.substring(mark);
+             openCLStringBuilder.delete(mark, openCLStringBuilder.length());
+
+             mark = -1;
+             return result;
          }
 
          @Override public void write(String _string) {
