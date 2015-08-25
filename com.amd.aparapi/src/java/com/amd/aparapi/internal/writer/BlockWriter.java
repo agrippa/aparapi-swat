@@ -479,9 +479,18 @@ public abstract class BlockWriter{
          if (isMultiDimensional || broadcastedObject) {
             write("(&");
          }
-         writeInstruction(arrayLoadInstruction.getArrayRef());
+         Instruction arrayRef = arrayLoadInstruction.getArrayRef();
+         final boolean isSparseVectorAccess =
+             Entrypoint.isSparseVectorIndicesOrValues(arrayRef);
+         writeInstruction(arrayRef);
          write("[");
+         if (isSparseVectorAccess) {
+             write("32 * (");
+         }
          writeInstruction(arrayLoadInstruction.getArrayIndex());
+         if (isSparseVectorAccess) {
+             write(")");
+         }
 
          //object array, find the size of each object in the array
          //for 2D arrays, this size is the size of a row.

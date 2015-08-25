@@ -615,7 +615,7 @@ public class Entrypoint implements Cloneable {
       return m;
    }
 
-   boolean isSparseVectorIndicesOrValues(Instruction insn) {
+   public static boolean isSparseVectorIndicesOrValues(Instruction insn) {
        if (insn instanceof I_INVOKEVIRTUAL) {
            final MethodEntry methodEntry = ((I_INVOKEVIRTUAL)insn).getConstantPoolMethodEntry();
            final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
