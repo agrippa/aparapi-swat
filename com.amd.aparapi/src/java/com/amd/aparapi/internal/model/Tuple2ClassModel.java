@@ -165,6 +165,19 @@ public class Tuple2ClassModel extends HardCodedClassModel {
    }
 
    @Override
+   public int calcTotalStructSize(Entrypoint entryPoint) {
+       int totalSize = 0;
+       for (final FieldNameInfo f : getStructMembers()) {
+           final String fieldType = f.desc;
+           // 8 for the pointer size on the device
+           final int fSize = (fieldType.startsWith("L") ? 8 :
+                   entryPoint.getSizeOf(fieldType));
+           totalSize += fSize;
+       }
+       return totalSize;
+   }
+
+   @Override
    public String toString() {
        return "Tuple2[" + getFirstTypeDesc() + ", " + getSecondTypeDesc() + "]";
    }

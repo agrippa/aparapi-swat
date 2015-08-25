@@ -2388,7 +2388,7 @@ public abstract class ClassModel {
                stringStack = new Stack<String>();
                i++; // step over this
             }
-               break;
+            break;
          }
       }
 

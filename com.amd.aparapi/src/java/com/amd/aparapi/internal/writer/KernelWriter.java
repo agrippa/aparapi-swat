@@ -56,6 +56,8 @@ public abstract class KernelWriter extends BlockWriter{
 
    public final static String BROADCAST_VALUE_SIG =
        "org/apache/spark/broadcast/Broadcast.value()Ljava/lang/Object;";
+   public final static String TUPLE2_CLASSNAME = "scala.Tuple2";
+   public final static String DENSEVECTOR_CLASSNAME = "org.apache.spark.mllib.linalg.DenseVector";
 
    private final String cvtBooleanToChar = "char ";
 
@@ -551,6 +553,8 @@ public abstract class KernelWriter extends BlockWriter{
                String cType = convertType(field.desc, true);
                if (field.desc.startsWith("L")) {
                    cType = "__global " + cType.replace('.', '_') + " *";
+               } else if (field.desc.startsWith("[")) {
+                   cType = "__global " + cType;
                }
                assert cType != null : "could not find type for " + field.desc;
                writeln(cType + " " + field.name + ";");
@@ -564,13 +568,6 @@ public abstract class KernelWriter extends BlockWriter{
                // Pad up if necessary
                totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
            }
-           // if (totalStructSize > alignTo) {
-           //   while (totalSize < totalStructSize) {
-           //     // structBuffer.put((byte)-1);
-           //     writeln("char _pad_" + totalSize + ";");
-           //     totalSize++;
-           //   }
-           // }
 
            out();
            newLine();
@@ -834,9 +831,6 @@ public abstract class KernelWriter extends BlockWriter{
            } else {
                sig = new TypeSignature(returnType);
            }
-           // System.err.println("mm=" + mm.toString());
-           // System.err.println("returnType=" + returnType);
-           // System.err.println("sig=" + sig.toString() + " convertedReturnType=" + convertedReturnType.trim());
            ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
                convertedReturnType.trim(), new SignatureMatcher(sig));
            fullReturnType = cm.getMangledClassName();
@@ -983,7 +977,9 @@ public abstract class KernelWriter extends BlockWriter{
 
       for (ScalaArrayParameter p : params) {
         if (p.getDir() == ScalaArrayParameter.DIRECTION.IN) {
-          if (p.getClazz() != null && p.getClazz().getName().equals("scala.Tuple2")) {
+          if (p.getClazz() != null &&
+                  _entryPoint.getHardCodedClassModels().haveClassModelFor(
+                      p.getClazz())) {
             writeln("__global " + p.getType() + " *my_" + p.getName() + " = " +
                 p.getName() + " + get_global_id(0);");
           }
@@ -1005,17 +1001,23 @@ public abstract class KernelWriter extends BlockWriter{
 
          for (ScalaArrayParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
-             if (p.getClazz() != null && p.getClazz().getName().equals("scala.Tuple2")) {
-               if (p.typeParameterIsObject(0)) {
-                   writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1 + i;");
-               } else {
-                   writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[i];");
-               }
+             if (p.getClazz() != null) {
+               if (p.getClazz().getName().equals(TUPLE2_CLASSNAME)) {
+                 if (p.typeParameterIsObject(0)) {
+                     writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1 + i;");
+                 } else {
+                     writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[i];");
+                 }
 
-               if (p.typeParameterIsObject(1)) {
-                   writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2 + i;");
-               } else {
-                   writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[i];");
+                 if (p.typeParameterIsObject(1)) {
+                     writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2 + i;");
+                 } else {
+                     writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[i];");
+                 }
+               } else if (p.getClazz().getName().equals(DENSEVECTOR_CLASSNAME)) {
+                 writeln("my_" + p.getName() + "->values = " + p.getName() +
+                         "_values + " + p.getName() + "_offsets[i];");
+                 writeln("my_" + p.getName() + "->size = " + p.getName() + "_sizes[i];");
                }
              }
            }

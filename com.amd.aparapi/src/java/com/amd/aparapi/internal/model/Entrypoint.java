@@ -1041,24 +1041,10 @@ public class Entrypoint implements Cloneable {
                    if (fields.size() > 0) {
                        Collections.sort(fields, fieldSizeComparator);
                        // Now compute the total size for the struct
-                       int alignTo = 0;
                        int totalSize = 0;
 
-                       if (c.getClassWeAreModelling().getName().equals("scala.Tuple2")) {
-
-                          for (final FieldNameInfo f : fields) {
-                             final String fieldType = f.desc;
-                             final int fSize;
-                             if (fieldType.startsWith("L")) {
-                               fSize = 8; // TODO safe to hard-code size of pointer on device?
-                             } else {
-                               fSize = getSizeOf(fieldType);
-                             }
-                             if (fSize > alignTo) {
-                                alignTo = fSize;
-                             }
-                             totalSize += fSize;
-                          }
+                       if (c instanceof HardCodedClassModel) {
+                           totalSize = ((HardCodedClassModel)c).calcTotalStructSize(this);
                        } else {
                           for (final FieldNameInfo f : fields) {
                              // Record field offset for use while copying
@@ -1071,9 +1057,6 @@ public class Entrypoint implements Cloneable {
                              c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType), f.name);
 
                              final int fSize = getSizeOf(fieldType);
-                             if (fSize > alignTo) {
-                                alignTo = fSize;
-                             }
 
                              totalSize += fSize;
                           }
@@ -1081,13 +1064,7 @@ public class Entrypoint implements Cloneable {
                        }
 
                        // compute total size for OpenCL buffer
-                       int totalStructSize = 0;
-                       // if ((totalSize % alignTo) == 0) {
-                          totalStructSize = totalSize;
-                       // } else {
-                       //    // Pad up if necessary
-                       //    totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
-                       // }
+                       int totalStructSize = totalSize;
                        c.setTotalStructSize(totalStructSize);
                    }
                }
@@ -1116,6 +1093,10 @@ public class Entrypoint implements Cloneable {
                return size;
              }
            }
+       }
+
+       if (desc.startsWith("[")) {
+           return 8;
        }
 
        return InstructionSet.TypeSpec.valueOf(desc).getSize();

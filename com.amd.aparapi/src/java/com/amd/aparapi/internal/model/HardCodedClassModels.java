@@ -25,21 +25,17 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
            }
        }
        existing.add(model);
-       // hardCodedClassModels.get(clz.getName()).add(model);
+    }
+
+    public boolean haveClassModelFor(Class<?> clz) {
+        return hardCodedClassModels.containsKey(clz.getName());
     }
 
     public HardCodedClassModel getClassModelFor(String className,
           HardCodedClassModelMatcher matcher) {
-       // System.err.println("  Looking up match for " + className +
-       //         ", contains? " + (hardCodedClassModels.containsKey(className)) +
-       //         " " + hardCodedClassModels.size());
-       // for (String k : hardCodedClassModels.keySet()) {
-       //     System.err.println("    " + k);
-       // }
        if (hardCodedClassModels.containsKey(className)) {
            List<HardCodedClassModel> classModels = hardCodedClassModels.get(
                    className);
-           // if (classModels.size() == 1) return classModels.get(0);
 
            for (HardCodedClassModel model : classModels) {
                if (matcher.matches(model)) {

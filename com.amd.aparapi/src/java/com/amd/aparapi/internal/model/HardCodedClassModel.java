@@ -7,6 +7,11 @@ import java.util.Iterator;
 import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 
+/*
+ * When adding a new hard coded class model it is generally necessary to both
+ * create a child of this HardCodedClassModel class and to insert some
+ * type-specific bits in the KernelWriter logic.
+ */
 public abstract class HardCodedClassModel extends ClassModel {
     private final List<HardCodedMethodModel> methods;
     protected final TypeParameters paramDescs;
@@ -44,6 +49,7 @@ public abstract class HardCodedClassModel extends ClassModel {
     public abstract String getDescriptor();
     public abstract List<String> getNestedTypeDescs();
     public abstract boolean merge(HardCodedClassModel other);
+    public abstract int calcTotalStructSize(Entrypoint entryPoint);
 
     @Override
     public MethodModel checkForHardCodedMethods(String name, String desc)

@@ -1084,11 +1084,15 @@ public abstract class BlockWriter{
                throw new RuntimeException();
            }
 
-           if (type.equals("scala.Tuple2")) {
+           if (type.equals(KernelWriter.TUPLE2_CLASSNAME)) {
                final String firstParam = getParameterStringFor(writer, 0);
                final String secondParam = getParameterStringFor(writer, 1);
                String containerParam = "__global " + getType() + " *" + name;
                return firstParam + ", " + secondParam + ", " + containerParam;
+           } else if (type.equals(KernelWriter.DENSEVECTOR_CLASSNAME)) {
+               return "__global " + type.replace('.', '_') + "* " + name +
+                   ", __global double *" + name + "_values, __global int *" +
+                   name + "_sizes, __global int *" + name + "_offsets";
            } else {
                return "__global " + type.replace('.', '_') + "* " + name;
            }
