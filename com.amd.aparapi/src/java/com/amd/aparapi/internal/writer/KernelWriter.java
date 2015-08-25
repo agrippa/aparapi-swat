@@ -1195,7 +1195,8 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    public static WriterAndKernel writeToString(Entrypoint _entrypoint,
-         Collection<ScalaArrayParameter> params) throws CodeGenException, AparapiException {
+         Collection<ScalaArrayParameter> params, Map<String, String> config)
+         throws CodeGenException, AparapiException {
 
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){
@@ -1216,6 +1217,11 @@ public abstract class KernelWriter extends BlockWriter{
             openCLStringBuilder.append(_string);
          }
       };
+
+      for (Map.Entry<String, String> entry : config.entrySet()) {
+        openCLWriter.addConfig(entry.getKey(), entry.getValue());
+      }
+
       try {
          openCLWriter.write(_entrypoint, params);
       } catch (final CodeGenException codeGenException) {

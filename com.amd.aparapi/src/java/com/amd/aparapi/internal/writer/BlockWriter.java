@@ -71,6 +71,13 @@ public abstract class BlockWriter{
 
    public abstract String getAllocCheck();
 
+   public static final String sparseVectorTilingConfig = "sparse_vector.tiling";
+   protected final Map<String, String> config = new HashMap<String, String>();
+
+   public void addConfig(String key, String value) {
+       config.put(key, value);
+   }
+
    public void writeln(String _string) {
       write(_string);
       newLine();
@@ -93,7 +100,8 @@ public abstract class BlockWriter{
       }
    }
 
-   public void writeConditionalBranch16(ConditionalBranch16 _branch16, boolean _invert) throws CodeGenException {
+   public void writeConditionalBranch16(ConditionalBranch16 _branch16,
+           boolean _invert) throws CodeGenException {
 
       if (_branch16 instanceof If) {
          final If iff = (If) _branch16;
@@ -485,7 +493,8 @@ public abstract class BlockWriter{
          writeInstruction(arrayRef);
          write("[");
          if (isSparseVectorAccess) {
-             write("32 * (");
+             int tiling = Integer.parseInt(config.get(sparseVectorTilingConfig));
+             write(tiling + " * (");
          }
          writeInstruction(arrayLoadInstruction.getArrayIndex());
          if (isSparseVectorAccess) {

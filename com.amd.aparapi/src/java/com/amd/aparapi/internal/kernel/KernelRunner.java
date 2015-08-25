@@ -54,6 +54,7 @@ import java.util.concurrent.ForkJoinPool.ManagedBlocker;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.HashMap;
 
 import com.amd.aparapi.Config;
 import com.amd.aparapi.Kernel;
@@ -1142,7 +1143,8 @@ public class KernelRunner extends KernelRunnerJNI{
 
                   String openCL = null;
                   try {
-                     openCL = KernelWriter.writeToString(entryPoint, new java.util.LinkedList<BlockWriter.ScalaArrayParameter>()).kernel;
+                     openCL = KernelWriter.writeToString(entryPoint,
+                             new java.util.LinkedList<BlockWriter.ScalaArrayParameter>(), new HashMap<String, String>()).kernel;
                   } catch (final CodeGenException codeGenException) {
                      return warnFallBackAndExecute(_entrypointName, _range, _passes, codeGenException);
                   } catch (final AparapiException e) {
