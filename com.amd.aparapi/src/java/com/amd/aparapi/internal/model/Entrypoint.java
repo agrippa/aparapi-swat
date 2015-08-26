@@ -68,6 +68,11 @@ public class Entrypoint implements Cloneable {
 
    private ClassModel classModel;
 
+   public static final String sparseVectorTilingConfig = "sparse_vector.tiling";
+   public static final String clDevicePointerSize = "device.pointer_size";
+   private final Map<String, String> config;
+   public Map<String, String> getConfig() { return config; }
+
    private final HardCodedClassModels hardCodedClassModels;
 
    public HardCodedClassModels getHardCodedClassModels() {
@@ -637,11 +642,10 @@ public class Entrypoint implements Cloneable {
    }
 
    public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
-           Object _k, Collection<ScalaArrayParameter> params, HardCodedClassModels setHardCodedClassModels)
-           throws AparapiException {
-      // System.err.println("Creating Entrypoint for " +
-      //         _classModel.getClassWeAreModelling().getName() + " " +
-      //         _methodModel.getName());
+           Object _k, Collection<ScalaArrayParameter> params,
+           HardCodedClassModels setHardCodedClassModels,
+           Map<String, String> config) throws AparapiException {
+      this.config = config;
       classModel = _classModel;
       methodModel = _methodModel;
       kernelInstance = _k;
@@ -1147,7 +1151,8 @@ public class Entrypoint implements Cloneable {
        }
 
        if (desc.startsWith("[")) {
-           return 8;
+           return Integer.parseInt(getConfig().get(
+                       Entrypoint.clDevicePointerSize));
        }
 
        return InstructionSet.TypeSpec.valueOf(desc).getSize();

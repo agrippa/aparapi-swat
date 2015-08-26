@@ -169,8 +169,9 @@ public class Tuple2ClassModel extends HardCodedClassModel {
        int totalSize = 0;
        for (final FieldNameInfo f : getStructMembers()) {
            final String fieldType = f.desc;
-           // 8 for the pointer size on the device
-           final int fSize = (fieldType.startsWith("L") ? 8 :
+           final int pointerSize = Integer.parseInt(entryPoint.getConfig().get(
+                       Entrypoint.clDevicePointerSize));
+           final int fSize = (fieldType.startsWith("L") ? pointerSize :
                    entryPoint.getSizeOf(fieldType));
            totalSize += fSize;
        }

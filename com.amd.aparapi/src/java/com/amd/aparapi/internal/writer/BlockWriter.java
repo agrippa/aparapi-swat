@@ -73,7 +73,6 @@ public abstract class BlockWriter{
 
    public abstract String getAllocCheck();
 
-   public static final String sparseVectorTilingConfig = "sparse_vector.tiling";
    protected final Map<String, String> config = new HashMap<String, String>();
 
    public void addConfig(String key, String value) {
@@ -495,7 +494,7 @@ public abstract class BlockWriter{
          writeInstruction(arrayRef);
          write("[");
          if (isSparseVectorAccess) {
-             int tiling = Integer.parseInt(config.get(sparseVectorTilingConfig));
+             int tiling = Integer.parseInt(config.get(Entrypoint.sparseVectorTilingConfig));
              write(tiling + " * (");
          }
          writeInstruction(arrayLoadInstruction.getArrayIndex());

@@ -261,7 +261,7 @@ public abstract class KernelWriter extends BlockWriter{
        writeInstruction(newArray.getFirstChild());
        String countStr = eraseToMark();
        String allocStr = generateAllocHelper(allocVarName,
-               "sizeof(int) + (sizeof(" + typeStr + ") * (" + countStr + "))",
+               "sizeof(long) + (sizeof(" + typeStr + ") * (" + countStr + "))",
                typeStr);
        /*
         * TODO This code stores the length of an array as a "header" at the
@@ -274,8 +274,8 @@ public abstract class KernelWriter extends BlockWriter{
         * Though I guess at that point you might as well just use the input as
         * the output, which would work (I think?).
         */
-       String storeLengthStr = "*((__global int *)" + allocVarName + ") = (" + countStr + ");";
-       String fixAllocVar = allocVarName + " = (__global " + typeStr + " *)(((__global int *)" + allocVarName + ") + 1); ";
+       String storeLengthStr = "*((__global long *)" + allocVarName + ") = (" + countStr + ");";
+       String fixAllocVar = allocVarName + " = (__global " + typeStr + " *)(((__global long *)" + allocVarName + ") + 1); ";
 
        writeBeforeCurrentLine(allocStr + " " + storeLengthStr + " " + fixAllocVar);
        write(allocVarName);
@@ -492,7 +492,7 @@ public abstract class KernelWriter extends BlockWriter{
                 writeBeforeCurrentLine(allocStr);
                 write("({ " + allocVarName + "->values = ");
                 writeInstruction(_methodCall.getArg(0));
-                write("; " + allocVarName + "->size = *(((__global int *)" + allocVarName + "->values) - 1); ");
+                write("; " + allocVarName + "->size = *(((__global long *)" + allocVarName + "->values) - 1); ");
                 write(allocVarName);
                 write("; })");
             } else {
@@ -1263,7 +1263,7 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    public static WriterAndKernel writeToString(Entrypoint _entrypoint,
-         Collection<ScalaArrayParameter> params, Map<String, String> config)
+         Collection<ScalaArrayParameter> params)
          throws CodeGenException, AparapiException {
 
       final StringBuilder openCLStringBuilder = new StringBuilder();
@@ -1308,7 +1308,7 @@ public abstract class KernelWriter extends BlockWriter{
          }
       };
 
-      for (Map.Entry<String, String> entry : config.entrySet()) {
+      for (Map.Entry<String, String> entry : _entrypoint.getConfig().entrySet()) {
         openCLWriter.addConfig(entry.getKey(), entry.getValue());
       }
 

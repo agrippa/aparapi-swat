@@ -72,8 +72,8 @@ public class DenseVectorClassModel extends HardCodedClassModel {
         methods.add(new HardCodedMethodModel("apply", "(I)D", applyGen, false, null));
 
         List<AllFieldInfo> fields = new ArrayList<AllFieldInfo>(2);
-        fields.add(new AllFieldInfo("size", "I", "int", -1));
         fields.add(new AllFieldInfo("values", "[D", "double*", -1));
+        fields.add(new AllFieldInfo("size", "I", "int", -1));
 
         return new DenseVectorClassModel(methods, fields);
     }
@@ -96,7 +96,9 @@ public class DenseVectorClassModel extends HardCodedClassModel {
    @Override
    public int calcTotalStructSize(Entrypoint entryPoint) {
        // Size of the pointer to values + size of the integer size
-       return (8 + 4);
+       final int pointerSize = Integer.parseInt(entryPoint.getConfig().get(
+                   Entrypoint.clDevicePointerSize));
+       return (pointerSize + 4);
    }
 
    @Override

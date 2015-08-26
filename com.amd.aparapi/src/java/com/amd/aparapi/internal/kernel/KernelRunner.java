@@ -1144,7 +1144,7 @@ public class KernelRunner extends KernelRunnerJNI{
                   String openCL = null;
                   try {
                      openCL = KernelWriter.writeToString(entryPoint,
-                             new java.util.LinkedList<BlockWriter.ScalaArrayParameter>(), new HashMap<String, String>()).kernel;
+                             new java.util.LinkedList<BlockWriter.ScalaArrayParameter>()).kernel;
                   } catch (final CodeGenException codeGenException) {
                      return warnFallBackAndExecute(_entrypointName, _range, _passes, codeGenException);
                   } catch (final AparapiException e) {

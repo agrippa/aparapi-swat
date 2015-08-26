@@ -88,9 +88,9 @@ public class SparseVectorClassModel extends HardCodedClassModel {
         methods.add(new HardCodedMethodModel("values", "()[D", valuesGen, false, null));
 
         List<AllFieldInfo> fields = new ArrayList<AllFieldInfo>(2);
-        fields.add(new AllFieldInfo("size", "I", "int", -1));
         fields.add(new AllFieldInfo("values", "[D", "double*", -1));
         fields.add(new AllFieldInfo("indices", "[I", "int*", -1));
+        fields.add(new AllFieldInfo("size", "I", "int", -1));
 
         return new SparseVectorClassModel(methods, fields);
     }
@@ -113,10 +113,12 @@ public class SparseVectorClassModel extends HardCodedClassModel {
    @Override
    public int calcTotalStructSize(Entrypoint entryPoint) {
        /*
-        * Size of the pointer to values + SIze of the pointer to indices + size
+        * Size of the pointer to values + size of the pointer to indices + size
         * of the integer size
         */
-       return (8 + 8 + 4);
+       final int pointerSize = Integer.parseInt(entryPoint.getConfig().get(
+                   Entrypoint.clDevicePointerSize));
+       return (pointerSize + pointerSize + 4);
    }
 
    @Override

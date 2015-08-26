@@ -2557,23 +2557,18 @@ public abstract class ClassModel {
    public static ClassModel createClassModel(Class<?> _class,
            Entrypoint entryPoint, HardCodedClassModelMatcher matcher)
            throws ClassParseException {
-      // System.err.println("Looking up class model for " + _class.getName() + " entryPoint=" + entryPoint);
       if (entryPoint != null) {
          HardCodedClassModel hardCoded = entryPoint.getHardCodedClassModels().getClassModelFor(
              _class.getName(), matcher);
-         // System.err.println("Calculated hardCoded=" + hardCoded);
          if (hardCoded != null) {
-             // System.err.println("Returning hard-coded class\n");
              return hardCoded;
          }
       }
 
       if (CacheEnabler.areCachesEnabled()) {
-          // System.err.println("Returning cached class model\n");
           return classModelCache.computeIfAbsent(_class);
       }
 
-      // System.err.println("Returning loaded class\n");
       return new LoadedClassModel(_class);
    }
 
@@ -2921,21 +2916,22 @@ public abstract class ClassModel {
 
    public Entrypoint getEntrypoint(String _entrypointName, String _descriptor,
            Object _k, Collection<ScalaArrayParameter> params,
-           HardCodedClassModels hardCodedClassModels) throws AparapiException {
+           HardCodedClassModels hardCodedClassModels, Map<String, String> config) throws AparapiException {
       if (CacheEnabler.areCachesEnabled()) {
-         EntrypointKey key = EntrypointKey.of(_entrypointName, _descriptor, params, hardCodedClassModels);
+         EntrypointKey key = EntrypointKey.of(_entrypointName, _descriptor,
+                 params, hardCodedClassModels, config);
          Entrypoint entrypointWithoutKernel = entrypointCache.computeIfAbsent(key);
          return entrypointWithoutKernel.cloneForKernel(_k);
       } else {
          final MethodModel method = getMethodModel(_entrypointName, _descriptor);
-         return new Entrypoint(this, method, _k, params, hardCodedClassModels);
+         return new Entrypoint(this, method, _k, params, hardCodedClassModels, config);
       }
    }
 
    Entrypoint computeBasicEntrypoint(EntrypointKey entrypointKey) throws AparapiException {
       final MethodModel method = getMethodModel(entrypointKey.getEntrypointName(), entrypointKey.getDescriptor());
       return new Entrypoint(this, method, null, entrypointKey.getParams(),
-              entrypointKey.getModels());
+              entrypointKey.getModels(), entrypointKey.getConfig());
    }
 
    public Class<?> getClassWeAreModelling() {
@@ -2943,11 +2939,11 @@ public abstract class ClassModel {
    }
 
    public Entrypoint getEntrypoint(String _entrypointName, Object _k) throws AparapiException {
-      return (getEntrypoint(_entrypointName, "()V", _k, null, null));
+      return (getEntrypoint(_entrypointName, "()V", _k, null, null, null));
    }
 
    public Entrypoint getEntrypoint() throws AparapiException {
-      return (getEntrypoint("run", "()V", null, null, null));
+      return (getEntrypoint("run", "()V", null, null, null, null));
    }
 
    public static void invalidateCaches() {
