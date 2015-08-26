@@ -60,6 +60,10 @@ public abstract class KernelWriter extends BlockWriter{
    public final static String DENSEVECTOR_CLASSNAME = "org.apache.spark.mllib.linalg.DenseVector";
    public final static String SPARSEVECTOR_CLASSNAME = "org.apache.spark.mllib.linalg.SparseVector";
 
+   public final static String VECTORS_CLASSNAME = "org/apache/spark/mllib/linalg/Vectors$";
+   public final static String DENSE_VECTOR_CREATE_SIG = VECTORS_CLASSNAME +
+       ".dense([D)Lorg/apache/spark/mllib/linalg/Vector;";
+
    private final String cvtBooleanToChar = "char ";
 
    private final String cvtBooleanArrayToCharStar = "char* ";
@@ -256,9 +260,24 @@ public abstract class KernelWriter extends BlockWriter{
        markCurrentPosition();
        writeInstruction(newArray.getFirstChild());
        String countStr = eraseToMark();
-       String allocStr = generateAllocHelper(allocVarName, "sizeof(" + typeStr +
-               ") * (" + countStr + ")", typeStr);
-       writeBeforeCurrentLine(allocStr);
+       String allocStr = generateAllocHelper(allocVarName,
+               "sizeof(int) + (sizeof(" + typeStr + ") * (" + countStr + "))",
+               typeStr);
+       /*
+        * TODO This code stores the length of an array as a "header" at the
+        * start of the allocation. This allows this allocation to be used to
+        * construct a DenseVector by implicitly storing its length. However,
+        * this header is not added to input arrays so if the user uses an input
+        * DenseVector's values to initialize an output DenseVector, this won't
+        * work.
+        *
+        * Though I guess at that point you might as well just use the input as
+        * the output, which would work (I think?).
+        */
+       String storeLengthStr = "*((__global int *)" + allocVarName + ") = (" + countStr + ");";
+       String fixAllocVar = allocVarName + " = (__global " + typeStr + " *)(((__global int *)" + allocVarName + ") + 1); ";
+
+       writeBeforeCurrentLine(allocStr + " " + storeLengthStr + " " + fixAllocVar);
        write(allocVarName);
    }
 
@@ -298,6 +317,8 @@ public abstract class KernelWriter extends BlockWriter{
    @Override public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       final int argc = _methodEntry.getStackConsumeCount();
       final boolean isBroadcasted = _methodEntry.toString().equals(BROADCAST_VALUE_SIG);
+      final boolean isDenseVectorCreate = _methodEntry.toString().equals(DENSE_VECTOR_CREATE_SIG);
+
       final String methodName =
           _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
       final String methodSignature =
@@ -463,6 +484,17 @@ public abstract class KernelWriter extends BlockWriter{
                 }
                 String fieldName = ((I_GETFIELD)target).getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                 write("this->" + fieldName);
+            } else if (isDenseVectorCreate) {
+                String allocVarName = "__alloc" + (countAllocs++);
+                String allocStr = generateAllocHelper(allocVarName,
+                        "sizeof(org_apache_spark_mllib_linalg_DenseVector)",
+                        "org_apache_spark_mllib_linalg_DenseVector");
+                writeBeforeCurrentLine(allocStr);
+                write("({ " + allocVarName + "->values = ");
+                writeInstruction(_methodCall.getArg(0));
+                write("; " + allocVarName + "->size = *(((__global int *)" + allocVarName + "->values) - 1); ");
+                write(allocVarName);
+                write("; })");
             } else {
                // Must be a library call like rsqrt
                if (!isMapped && !isScalaMapped) {
@@ -475,7 +507,7 @@ public abstract class KernelWriter extends BlockWriter{
             write(intrinsicMapping);
          }
 
-         if (!isBroadcasted) {
+         if (!isBroadcasted && !isDenseVectorCreate) {
              write("(");
 
              if ((intrinsicMapping == null) && !isBroadcasted &&
@@ -1101,7 +1133,7 @@ public abstract class KernelWriter extends BlockWriter{
              write("processing_succeeded[i] = 1;");
              newLine();
              if (outParam.getClazz() != null) {
-                 if (outParam.getClazz().getName().equals("scala.Tuple2")) {
+                 if (outParam.getClazz().getName().equals(TUPLE2_CLASSNAME)) {
                      if (outParam.typeParameterIsObject(0)) {
                          write(outParam.getName() + "_1[i] = *(result->_1);");
                      } else {
@@ -1115,6 +1147,11 @@ public abstract class KernelWriter extends BlockWriter{
                      } else {
                          write(outParam.getName() + "_2[i] = result->_2;");
                      }
+                 } else if (outParam.getClazz().getName().equals(
+                             DENSEVECTOR_CLASSNAME)) {
+                     // Offset in bytes
+                     writeln("result->values = ((__global char *)result->values) - ((__global char *)this->heap);");
+                     write(outParam.getName() + "[i] = *result;");
                  } else {
                      write(outParam.getName() + "[i] = *result;");
                  }

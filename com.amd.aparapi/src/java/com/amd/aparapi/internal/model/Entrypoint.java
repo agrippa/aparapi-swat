@@ -423,6 +423,10 @@ public class Entrypoint implements Cloneable {
           final FieldEntry field) throws AparapiException {
       final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
 
+      if (accessedFieldName.equals("MODULE$")) {
+        return;
+      }
+
       // Quickly bail if it is a ref
       if (field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8().startsWith("L")
             || field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8().startsWith("[L")) {

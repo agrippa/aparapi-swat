@@ -321,7 +321,7 @@ public abstract class BlockWriter{
    }
 
    public void writeBlock(Instruction _first, Instruction _last) throws CodeGenException {
-      write("{");
+      writeln("{");
       in();
       writeSequence(_first, _last);
       out();
