@@ -954,6 +954,108 @@ public abstract class BlockWriter{
        }
    }
 
+   public static class ScalaSparseVectorParameter implements ScalaParameter {
+       private final Class<?> clazz;
+       private final String name;
+
+       public ScalaSparseVectorParameter(String name) {
+           try {
+               this.clazz = Class.forName("org.apache.spark.mllib.linalg.SparseVector");
+           } catch (ClassNotFoundException c) {
+               throw new RuntimeException(c);
+           }
+           this.name = name;
+       }
+
+       @Override
+       public String getInputParameterString(KernelWriter writer) {
+           return "__global org_apache_spark_mllib_linalg_SparseVector* " + name +
+               ", __global int *" + name + "_indices, __global double *" +
+               name + "_values, __global int *" + name +
+               "_sizes, __global int *" + name + "_offsets";
+       }
+
+       @Override
+       public String getOutputParameterString(KernelWriter writer) {
+           throw new UnsupportedOperationException();
+       }
+
+       @Override
+       public String getStructString(KernelWriter writer) {
+           return "__global org_apache_spark_mllib_linalg_SparseVector *" + name;
+       }
+
+       @Override
+       public String getAssignString(KernelWriter writer) {
+           return "this->" + name + " = " + name;
+       }
+
+       @Override
+       public Class<?> getClazz() {
+           return clazz;
+       }
+
+       @Override
+       public DIRECTION getDir() {
+           return ScalaParameter.DIRECTION.IN;
+       }
+
+   }
+
+   public static class ScalaDenseVectorParameter implements ScalaParameter {
+       private final Class<?> clazz;
+       private final String name;
+
+       public ScalaDenseVectorParameter(String name) {
+           try {
+               this.clazz = Class.forName("org.apache.spark.mllib.linalg.DenseVector");
+           } catch (ClassNotFoundException c) {
+               throw new RuntimeException(c);
+           }
+           this.name = name;
+       }
+
+       @Override
+       public String getInputParameterString(KernelWriter writer) {
+           return "__global org_apache_spark_mllib_linalg_DenseVector* " + name +
+               ", __global double *" + name + "_values, __global int *" +
+               name + "_sizes, __global int *" + name + "_offsets, int n" + name;
+       }
+
+       @Override
+       public String getOutputParameterString(KernelWriter writer) {
+           throw new UnsupportedOperationException();
+       }
+
+       @Override
+       public String getStructString(KernelWriter writer) {
+           StringBuilder builder = new StringBuilder();
+           builder.append("__global org_apache_spark_mllib_linalg_DenseVector *" + name + "; ");
+           return builder.toString();
+       }
+
+       @Override
+       public String getAssignString(KernelWriter writer) {
+           StringBuilder builder = new StringBuilder();
+           builder.append("this->" + name + " = " + name + ";\n");
+           builder.append("   for (int j = 0; j < n" + name + "; j++) {\n");
+           builder.append("      (this->" + name + ")[j].values = " + name + "_values + " + name + "_offsets[j];\n");
+           builder.append("      (this->" + name + ")[j].size = " + name + "_sizes[j];\n");
+           builder.append("   }\n");
+           return builder.toString();
+       }
+
+       @Override
+       public Class<?> getClazz() {
+           return clazz;
+       }
+
+       @Override
+       public DIRECTION getDir() {
+           return ScalaParameter.DIRECTION.IN;
+       }
+   }
+
    public static class ScalaArrayParameter implements ScalaParameter {
 
        private final String type;

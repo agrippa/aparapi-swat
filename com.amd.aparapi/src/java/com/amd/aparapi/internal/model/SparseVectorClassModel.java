@@ -88,8 +88,8 @@ public class SparseVectorClassModel extends HardCodedClassModel {
         methods.add(new HardCodedMethodModel("values", "()[D", valuesGen, false, null));
 
         List<AllFieldInfo> fields = new ArrayList<AllFieldInfo>(2);
-        fields.add(new AllFieldInfo("values", "[D", "double*", -1));
         fields.add(new AllFieldInfo("indices", "[I", "int*", -1));
+        fields.add(new AllFieldInfo("values", "[D", "double*", -1));
         fields.add(new AllFieldInfo("size", "I", "int", -1));
 
         return new SparseVectorClassModel(methods, fields);

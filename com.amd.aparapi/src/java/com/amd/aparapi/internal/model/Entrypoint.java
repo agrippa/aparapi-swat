@@ -46,6 +46,7 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodReferenceEntry.*;
 import com.amd.aparapi.internal.util.*;
 
+import com.amd.aparapi.internal.writer.KernelWriter;
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
 import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter;
 import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
@@ -377,33 +378,44 @@ public class Entrypoint implements Cloneable {
                final String returnType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
                HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
                    @Override
-                   public void checkPreconditions(List<HardCodedClassModel> classModels) { }
+                   public void checkPreconditions(List<HardCodedClassModel> classModels) {
+                   }
 
                    @Override
                    public boolean matches(HardCodedClassModel model) {
                        // TODO use _methodCall and _methodEntry?
-                       TypeParameters params = model.getTypeParamDescs();
-                       if (methodName.startsWith("_1")) {
-                         String first = params.get(0);
-                         if (returnType.length() == 1) {
-                           // Primitive
-                           return returnType.equals(first);
-                         } else if (returnType.startsWith("L")) {
-                           // Object
-                           return first.startsWith("L"); // #*&$% type erasure
-                         } else {
-                           throw new RuntimeException(returnType);
-                         }
-                       } else if (methodName.startsWith("_2")) {
-                         String second = params.get(1);
-                         if (returnType.length() == 1) {
-                           // Primitive
-                           return returnType.equals(second);
-                         } else if (returnType.startsWith("L")) {
-                           // Object
-                           return second.startsWith("L"); // #*&$% type erasure
-                         } else {
-                           throw new RuntimeException(returnType);
+                       String modelClassName = model.getClassWeAreModelling().getName();
+                       if (modelClassName.equals(
+                                   KernelWriter.DENSEVECTOR_CLASSNAME)) {
+                         return true;
+                       } else if (modelClassName.equals(
+                                   KernelWriter.SPARSEVECTOR_CLASSNAME)) {
+                         return true;
+                       } else if (modelClassName.equals(
+                                   KernelWriter.TUPLE2_CLASSNAME)) {
+                         TypeParameters params = model.getTypeParamDescs();
+                         if (methodName.startsWith("_1")) {
+                           String first = params.get(0);
+                           if (returnType.length() == 1) {
+                             // Primitive
+                             return returnType.equals(first);
+                           } else if (returnType.startsWith("L")) {
+                             // Object
+                             return first.startsWith("L"); // #*&$% type erasure
+                           } else {
+                             throw new RuntimeException(returnType);
+                           }
+                         } else if (methodName.startsWith("_2")) {
+                           String second = params.get(1);
+                           if (returnType.length() == 1) {
+                             // Primitive
+                             return returnType.equals(second);
+                           } else if (returnType.startsWith("L")) {
+                             // Object
+                             return second.startsWith("L"); // #*&$% type erasure
+                           } else {
+                             throw new RuntimeException(returnType);
+                           }
                          }
                        }
                        return false;
@@ -562,20 +574,13 @@ public class Entrypoint implements Cloneable {
          String targetMethodOwner = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
          final Set<ClassModel> possibleMatches = new HashSet<ClassModel>();
 
-         // System.err.println("Looking for method call to " + targetMethodOwner +
-         //         " " + methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + " " +
-         //         methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8());
-
          for (ClassModel c : allFieldsClasses) {
             if (c.getClassWeAreModelling().getName().equals(targetMethodOwner)) {
-               // System.err.println("c=" + c.toString());
                m = c.getMethod(methodEntry, (methodCall instanceof I_INVOKESPECIAL) ? true : false);
             } else if (c.classNameMatches(targetMethodOwner)) {
                possibleMatches.add(c);
             }
          }
-         // System.err.println("m=" + m + ", possibleMatches.size()=" + possibleMatches.size());
-
 
          if (m == null) {
              for (ClassModel c : possibleMatches) {
@@ -850,9 +855,13 @@ public class Entrypoint implements Cloneable {
                     signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
                     if (signature.equals("Lorg/apache/spark/broadcast/Broadcast;")) {
                         Instruction next = instruction.getNextPC();
-                        assert next instanceof I_INVOKEVIRTUAL;
+                        if (!(next instanceof I_INVOKEVIRTUAL)) {
+                            throw new RuntimeException("Expected I_INVOKEVIRTUAL, got " + next);
+                        }
                         Instruction next_next = next.getNextPC();
-                        assert next_next instanceof I_CHECKCAST;
+                        if (!(next_next instanceof I_CHECKCAST)) {
+                            throw new RuntimeException("Expected I_CHECKCAST, got " + next_next);
+                        }
                         final String typeName = ((I_CHECKCAST)next_next).getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
                         if (!typeName.startsWith("[")) {
                             throw new RuntimeException("Broadcast variables " +
@@ -886,8 +895,6 @@ public class Entrypoint implements Cloneable {
                   if (logger.isLoggable(Level.FINE)) {
                      logger.fine("AccessField field type= " + signature + " in " + methodModel.getName());
                   }
-
-                  // System.err.println("name=" + accessedFieldName + " signature=" + signature + ", in " + methodModel.getName());
 
                   // Add the class model for the referenced obj array
                   if (signature.startsWith("[L")) {
@@ -1253,14 +1260,12 @@ public class Entrypoint implements Cloneable {
           entryClassNameInDotForm = "scala.Tuple2";
       }
       final Set<ClassModel> matchingClassModels = new HashSet<ClassModel>();
-      // System.err.println("entryClassNameInDotForm=" + entryClassNameInDotForm + ", target=" + target);
 
       if (target == null) {
          // Look for member obj accessor calls
          for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
 
            String memberObjClassName = memberObjClass.getClassWeAreModelling().getName();
-           // System.err.println("  memberObjClassName=" + memberObjClassName);
            if (memberObjClassName.equals(entryClassNameInDotForm)) {
                MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
                    memberObjClass);

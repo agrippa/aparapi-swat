@@ -63,6 +63,8 @@ public abstract class KernelWriter extends BlockWriter{
    public final static String VECTORS_CLASSNAME = "org/apache/spark/mllib/linalg/Vectors$";
    public final static String DENSE_VECTOR_CREATE_SIG = VECTORS_CLASSNAME +
        ".dense([D)Lorg/apache/spark/mllib/linalg/Vector;";
+   public final static String SPARSE_VECTOR_CREATE_SIG = VECTORS_CLASSNAME +
+       ".sparse(I[I[D)Lorg/apache/spark/mllib/linalg/Vector;";
 
    private final String cvtBooleanToChar = "char ";
 
@@ -318,6 +320,7 @@ public abstract class KernelWriter extends BlockWriter{
       final int argc = _methodEntry.getStackConsumeCount();
       final boolean isBroadcasted = _methodEntry.toString().equals(BROADCAST_VALUE_SIG);
       final boolean isDenseVectorCreate = _methodEntry.toString().equals(DENSE_VECTOR_CREATE_SIG);
+      final boolean isSparseVectorCreate = _methodEntry.toString().equals(SPARSE_VECTOR_CREATE_SIG);
 
       final String methodName =
           _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
@@ -492,9 +495,28 @@ public abstract class KernelWriter extends BlockWriter{
                 writeBeforeCurrentLine(allocStr);
                 write("({ " + allocVarName + "->values = ");
                 writeInstruction(_methodCall.getArg(0));
-                write("; " + allocVarName + "->size = *(((__global long *)" + allocVarName + "->values) - 1); ");
+                write("; " + allocVarName + "->size = *(((__global long *)" +
+                        allocVarName + "->values) - 1); ");
                 write(allocVarName);
                 write("; })");
+            } else if (isSparseVectorCreate) {
+                String allocVarName = "__alloc" + (countAllocs++);
+                String allocStr = generateAllocHelper(allocVarName,
+                        "sizeof(org_apache_spark_mllib_linalg_SparseVector)",
+                        "org_apache_spark_mllib_linalg_SparseVector");
+                writeBeforeCurrentLine(allocStr);
+                write("({ " + allocVarName + "->size = ");
+                writeInstruction(_methodCall.getArg(0));
+                write("; ");
+                write(allocVarName + "->indices = ");
+                writeInstruction(_methodCall.getArg(1));
+                write("; ");
+                write(allocVarName + "->values = ");
+                writeInstruction(_methodCall.getArg(2));
+                write("; ");
+                write(allocVarName);
+                write("; })");
+
             } else {
                // Must be a library call like rsqrt
                if (!isMapped && !isScalaMapped) {
@@ -507,7 +529,7 @@ public abstract class KernelWriter extends BlockWriter{
             write(intrinsicMapping);
          }
 
-         if (!isBroadcasted && !isDenseVectorCreate) {
+         if (!isBroadcasted && !isDenseVectorCreate && !isSparseVectorCreate) {
              write("(");
 
              if ((intrinsicMapping == null) && !isBroadcasted &&
@@ -525,13 +547,47 @@ public abstract class KernelWriter extends BlockWriter{
                  } else if (i instanceof AccessArrayElement) {
                      final AccessArrayElement arrayAccess = (AccessArrayElement)i;
                      final Instruction refAccess = arrayAccess.getArrayRef();
-                     //assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
-                     final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
-                         .getNameUTF8Entry().getUTF8();
-                     write(" &(this->" + fieldName);
-                     write("[");
-                     writeInstruction(arrayAccess.getArrayIndex());
-                     write("])");
+                     if (refAccess instanceof AccessField) {
+                         final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
+                             .getNameUTF8Entry().getUTF8();
+                         write(" &(this->" + fieldName);
+                         write("[");
+                         writeInstruction(arrayAccess.getArrayIndex());
+                         write("])");
+                     } else if (refAccess instanceof I_CHECKCAST) {
+                         /*
+                          * 13: getfield      #305                // Field broadcast$1:Lorg/apache/spark/broadcast/Broadcast;
+                          * 16: invokevirtual #311                // Method org/apache/spark/broadcast/Broadcast.value:()Ljava/lang/Object;
+                          * 19: checkcast     #313                // class "[Lorg/apache/spark/mllib/linalg/DenseVector;"
+                          */
+                         I_CHECKCAST cast = (I_CHECKCAST)refAccess;
+                         String typeName = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+                         if (!typeName.equals("[Lorg/apache/spark/mllib/linalg/DenseVector;")) {
+                             throw new RuntimeException("Unexpected type name " + typeName);
+                         }
+                         Instruction prev = cast.getPrevPC();
+                         if (!(prev instanceof I_INVOKEVIRTUAL)) {
+                             throw new RuntimeException("Unexpected prev = " + prev);
+                         }
+                         I_INVOKEVIRTUAL valueInvoke = (I_INVOKEVIRTUAL)prev;
+                         MethodEntry callee = valueInvoke.getConstantPoolMethodEntry();
+                         if (!callee.toString().equals(BROADCAST_VALUE_SIG)) {
+                             throw new RuntimeException("Expected " +
+                                     "Broadcast.value, got " +
+                                     callee.toString());
+                         }
+                         final String fieldName = ((AccessField)valueInvoke.getPrevPC())
+                             .getConstantPoolFieldEntry().getNameAndTypeEntry()
+                             .getNameUTF8Entry().getUTF8();
+                         write(" &(this->" + fieldName);
+                         write("[");
+                         writeInstruction(arrayAccess.getArrayIndex());
+                         write("])");
+
+                     } else {
+                         throw new RuntimeException("Unexpected instruction " + refAccess);
+                     }
+
                  } else if (i instanceof New) {
                      // Constructor call
                      assert methodName.equals("<init>");
@@ -700,8 +756,10 @@ public abstract class KernelWriter extends BlockWriter{
          String signature = field.getDescriptor();
 
          ScalaParameter param = null;
-         if (signature.equals("Lorg/apache/spark/broadcast/Broadcast;")) {
-             //TODO
+         if (signature.equals("[Lorg/apache/spark/mllib/linalg/DenseVector;")) {
+             param = new ScalaDenseVectorParameter(field.getName());
+         } else if (signature.equals("[Lorg/apache/spark/mllib/linalg/SparseVector;")) {
+             param = new ScalaSparseVectorParameter(field.getName());
          } else if (signature.startsWith("[")) {
              param = new ScalaArrayParameter(signature,
                      field.getName(), ScalaParameter.DIRECTION.IN);
@@ -811,12 +869,10 @@ public abstract class KernelWriter extends BlockWriter{
       in();
       newLine();
       {
-        write("__global unsigned char *cheap = (__global unsigned char *)heap;");
-        newLine();
-        write("uint offset = atomic_add(free_index, nbytes);");
-        newLine();
-        write("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
-        newLine();
+        writeln("__global unsigned char *cheap = (__global unsigned char *)heap;");
+        writeln("uint rounded = nbytes + (8 - (nbytes % 8));");
+        writeln("uint offset = atomic_add(free_index, rounded);");
+        writeln("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
         write("else return (__global void *)(cheap + offset);");
       }
       out();
@@ -1152,6 +1208,12 @@ public abstract class KernelWriter extends BlockWriter{
                      // Offset in bytes
                      writeln("result->values = ((__global char *)result->values) - ((__global char *)this->heap);");
                      write(outParam.getName() + "[i] = *result;");
+                 } else if (outParam.getClazz().getName().equals(
+                             SPARSEVECTOR_CLASSNAME)) {
+                     // Offset in bytes
+                     writeln("result->values = ((__global char *)result->values) - ((__global char *)this->heap);");
+                     writeln("result->indices = ((__global char *)result->indices) - ((__global char *)this->heap);");
+                     write(outParam.getName() + "[i] = *result;");
                  } else {
                      write(outParam.getName() + "[i] = *result;");
                  }
@@ -1272,10 +1334,15 @@ public abstract class KernelWriter extends BlockWriter{
          private int mark = -1;
 
          @Override public void writeBeforeCurrentLine(String _string) {
+           char insertingAt = openCLStringBuilder.charAt(openCLStringBuilder.length() -
+                   writtenSinceLastNewLine - 1);
+           if (insertingAt != '\n') {
+               throw new RuntimeException("Expected newline but found \"" +
+                       insertingAt + "\"");
+           }
            openCLStringBuilder.insert(openCLStringBuilder.length() -
                writtenSinceLastNewLine, _string + "\n");
          }
-
 
          @Override public void markCurrentPosition() {
              if (mark != -1) {
@@ -1289,9 +1356,9 @@ public abstract class KernelWriter extends BlockWriter{
                  throw new RuntimeException("Missing mark");
              }
 
-
              final String result = openCLStringBuilder.substring(mark);
              openCLStringBuilder.delete(mark, openCLStringBuilder.length());
+             writtenSinceLastNewLine -= result.length();
 
              mark = -1;
              return result;
