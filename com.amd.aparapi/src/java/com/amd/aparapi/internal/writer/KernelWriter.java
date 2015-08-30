@@ -485,6 +485,7 @@ public abstract class KernelWriter extends BlockWriter{
             scalaMapped.add("scala/math/package$.sqrt(D)D");
             scalaMapped.add("scala/math/package$.pow(DD)D");
             scalaMapped.add("scala/math/package$.exp(D)D");
+            scalaMapped.add("scala/math/package$.log(D)D");
 
             boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
 

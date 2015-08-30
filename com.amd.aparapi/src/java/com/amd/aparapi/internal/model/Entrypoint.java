@@ -688,9 +688,13 @@ public class Entrypoint implements Cloneable {
           }
       }
 
-      final String enclosingClass =
-          _classModel.getClassWeAreModelling().getEnclosingClass().getName();
-      addClass(enclosingClass, new String[0]);
+      Class<?> enclosingClass = _classModel.getClassWeAreModelling().getEnclosingClass();
+      while (enclosingClass != null) {
+          System.err.println("enclosingClass=" + enclosingClass.getName());
+          addClass(enclosingClass.getName(), new String[0]);
+          enclosingClass = enclosingClass.getEnclosingClass();
+      }
+
 
       if (params != null) {
         for (ScalaArrayParameter p : params) {
@@ -1275,6 +1279,7 @@ public class Entrypoint implements Cloneable {
     */
    public MethodModel getCallTarget(MethodEntry _methodEntry, boolean _isSpecial) {
 
+      final String methodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
       ClassModelMethod target = getClassModel().getMethod(_methodEntry, _isSpecial);
       boolean isMapped = Kernel.isMappedMethod(_methodEntry);
 
@@ -1287,6 +1292,7 @@ public class Entrypoint implements Cloneable {
       String entryClassNameInDotForm =
           _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/',
               '.');
+      System.err.println("Looking for " + entryClassNameInDotForm + " " + methodName);
       if (entryClassNameInDotForm.startsWith("scala.Tuple2")) {
           entryClassNameInDotForm = "scala.Tuple2";
       }
@@ -1297,6 +1303,7 @@ public class Entrypoint implements Cloneable {
          for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
 
            String memberObjClassName = memberObjClass.getClassWeAreModelling().getName();
+           System.err.println("  " + memberObjClassName);
            if (memberObjClassName.equals(entryClassNameInDotForm)) {
                MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
                    memberObjClass);
