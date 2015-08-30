@@ -66,6 +66,11 @@ public abstract class KernelWriter extends BlockWriter{
    public final static String SPARSE_VECTOR_CREATE_SIG = VECTORS_CLASSNAME +
        ".sparse(I[I[D)Lorg/apache/spark/mllib/linalg/Vector;";
 
+   public final static String DENSE_ARRAY_SIG =
+       "[Lorg/apache/spark/mllib/linalg/DenseVector;";
+   public final static String SPARSE_ARRAY_SIG =
+       "[Lorg/apache/spark/mllib/linalg/SparseVector;";
+
    private final String cvtBooleanToChar = "char ";
 
    private final String cvtBooleanArrayToCharStar = "char* ";
@@ -316,6 +321,21 @@ public abstract class KernelWriter extends BlockWriter{
      write(")");
    }
 
+   private static String getStaticFieldName(I_GETSTATIC get) {
+       return get.getConstantPoolFieldEntry().getNameAndTypeEntry()
+           .getNameUTF8Entry().getUTF8();
+   }
+
+   private static String getStaticFieldType(I_GETSTATIC get) {
+       return get.getConstantPoolFieldEntry().getNameAndTypeEntry()
+           .getDescriptorUTF8Entry().getUTF8();
+   }
+
+   private static String getStaticFieldClass(I_GETSTATIC get) {
+       return get.getConstantPoolFieldEntry().getClassEntry()
+           .getNameUTF8Entry().getUTF8();
+   }
+
    @Override public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
       final int argc = _methodEntry.getStackConsumeCount();
       final boolean isBroadcasted = _methodEntry.toString().equals(BROADCAST_VALUE_SIG);
@@ -456,12 +476,15 @@ public abstract class KernelWriter extends BlockWriter{
          boolean isIntrinsic = false;
 
          if (intrinsicMapping == null) {
-            assert entryPoint != null : "entryPoint should not be null";
+            if (entryPoint == null) {
+                throw new RuntimeException("entryPoint should not be null");
+            }
             boolean isMapped = Kernel.isMappedMethod(_methodEntry);
 
             Set<String> scalaMapped = new HashSet<String>();
             scalaMapped.add("scala/math/package$.sqrt(D)D");
             scalaMapped.add("scala/math/package$.pow(DD)D");
+            scalaMapped.add("scala/math/package$.exp(D)D");
 
             boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
 
@@ -485,7 +508,9 @@ public abstract class KernelWriter extends BlockWriter{
                 if (!(target instanceof I_GETFIELD)) {
                     throw new RuntimeException("Expected GETFIELD");
                 }
-                String fieldName = ((I_GETFIELD)target).getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                String fieldName = ((I_GETFIELD)target)
+                    .getConstantPoolFieldEntry().getNameAndTypeEntry()
+                    .getNameUTF8Entry().getUTF8();
                 write("this->" + fieldName);
             } else if (isDenseVectorCreate) {
                 String allocVarName = "__alloc" + (countAllocs++);
@@ -530,6 +555,7 @@ public abstract class KernelWriter extends BlockWriter{
          }
 
          if (!isBroadcasted && !isDenseVectorCreate && !isSparseVectorCreate) {
+             boolean isScalaStaticObjectCall = false;
              write("(");
 
              if ((intrinsicMapping == null) && !isBroadcasted &&
@@ -538,17 +564,20 @@ public abstract class KernelWriter extends BlockWriter{
                  Instruction i = ((VirtualMethodCall) _methodCall).getInstanceReference();
                  if (i instanceof CloneInstruction) {
                      i = ((CloneInstruction)i).getReal();
+                 } else if (i instanceof I_CHECKCAST) {
+                     i = i.getFirstChild();
                  }
 
                  if (i instanceof I_ALOAD_0) {
                      write("this");
-                 } else if (i instanceof LocalVariableConstIndexLoad) {
+                 } else if (i instanceof LocalVariableConstIndexLoad || i instanceof I_INVOKEVIRTUAL) {
                      writeInstruction(i);
                  } else if (i instanceof AccessArrayElement) {
                      final AccessArrayElement arrayAccess = (AccessArrayElement)i;
                      final Instruction refAccess = arrayAccess.getArrayRef();
                      if (refAccess instanceof AccessField) {
-                         final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
+                         final String fieldName = ((AccessField) refAccess)
+                             .getConstantPoolFieldEntry().getNameAndTypeEntry()
                              .getNameUTF8Entry().getUTF8();
                          write(" &(this->" + fieldName);
                          write("[");
@@ -562,7 +591,8 @@ public abstract class KernelWriter extends BlockWriter{
                           */
                          I_CHECKCAST cast = (I_CHECKCAST)refAccess;
                          String typeName = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
-                         if (!typeName.equals("[Lorg/apache/spark/mllib/linalg/DenseVector;")) {
+                         if (!typeName.equals(DENSE_ARRAY_SIG) &&
+                                 !typeName.equals(SPARSE_ARRAY_SIG)) {
                              throw new RuntimeException("Unexpected type name " + typeName);
                          }
                          Instruction prev = cast.getPrevPC();
@@ -592,12 +622,22 @@ public abstract class KernelWriter extends BlockWriter{
                      // Constructor call
                      assert methodName.equals("<init>");
                      writeInstruction(i);
+                 } else if (i instanceof I_GETSTATIC &&
+                         getStaticFieldName((I_GETSTATIC)i).equals("MODULE$")) {
+                     /*
+                      * Operating on a scala object method with a static method
+                      * call, do nothing as there is not "this" to pass.
+                      */
+                     isScalaStaticObjectCall = true;
                  } else {
-                     throw new RuntimeException("unhandled call to " + _methodEntry + " from: " + i);
+                     throw new RuntimeException("unhandled call to " +
+                             _methodEntry + " from: " + i);
                  }
              }
              for (int arg = 0; arg < argc; arg++) {
-                 if (((intrinsicMapping == null) && (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) || (arg != 0)) {
+                 if (!isScalaStaticObjectCall && ((intrinsicMapping == null) &&
+                             (_methodCall instanceof VirtualMethodCall) &&
+                             (!isIntrinsic)) || (arg != 0)) {
                      write(", ");
                  }
                  writeInstruction(_methodCall.getArg(arg));
@@ -689,10 +729,11 @@ public abstract class KernelWriter extends BlockWriter{
                totalStructSize = ((totalSize / alignTo) + 1) * alignTo;
            }
 
-           out();
-           newLine();
        }
+       out();
+       newLine();
        write("} " + mangledClassName + ";");
+       newLine();
        newLine();
    }
 
@@ -739,6 +780,17 @@ public abstract class KernelWriter extends BlockWriter{
        }
    }
 
+   private static boolean isMemberOfScalaObject(MethodModel mm) {
+       ClassModel classModel = mm.getMethod().getClassModel();
+       Class<?> clazz = classModel.getClassWeAreModelling();
+       try {
+           clazz.getDeclaredField("MODULE$");
+       } catch (NoSuchFieldException n) {
+           return false;
+       }
+       return true;
+   }
+
    @Override public void write(Entrypoint _entryPoint,
          Collection<ScalaArrayParameter> params) throws CodeGenException {
       final List<String> thisStruct = new ArrayList<String>();
@@ -757,11 +809,16 @@ public abstract class KernelWriter extends BlockWriter{
 
          ScalaParameter param = null;
          if (signature.equals("[Lorg/apache/spark/mllib/linalg/DenseVector;")) {
-             param = new ScalaDenseVectorParameter(field.getName());
+             param = new ScalaDenseVectorArrayParameter(signature,
+                     field.getName(), ScalaParameter.DIRECTION.IN);
          } else if (signature.equals("[Lorg/apache/spark/mllib/linalg/SparseVector;")) {
-             param = new ScalaSparseVectorParameter(field.getName());
+             param = new ScalaSparseVectorArrayParameter(signature,
+                     field.getName(), ScalaParameter.DIRECTION.IN);
+         } else if (signature.startsWith("[Lscala/Tuple2")) {
+             param = new ScalaTuple2ArrayParameter(signature, field.getName(),
+                     ScalaParameter.DIRECTION.IN);
          } else if (signature.startsWith("[")) {
-             param = new ScalaArrayParameter(signature,
+             param = new ScalaPrimitiveOrObjectArrayParameter(signature,
                      field.getName(), ScalaParameter.DIRECTION.IN);
          } else {
              param = new ScalaScalarParameter(signature, field.getName());
@@ -773,7 +830,7 @@ public abstract class KernelWriter extends BlockWriter{
 
          argLine.append(param.getInputParameterString(this));
          thisStructLine.append(param.getStructString(this));
-         assignLine.append(param.getAssignString(this));
+         assignLine.append(param.getGlobalInitString(this));
 
          assigns.add(assignLine.toString());
          argLines.add(argLine.toString());
@@ -884,7 +941,6 @@ public abstract class KernelWriter extends BlockWriter{
       List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
       Set<String> emitted = new HashSet<String>();
       for (String className : lexicalOrdering) {
-
         for (final ClassModel cm : _entryPoint.getModelsForClassName(className)) {
             final String mangled = cm.getMangledClassName();
             if (emitted.contains(mangled)) continue;
@@ -980,9 +1036,10 @@ public abstract class KernelWriter extends BlockWriter{
 
          write(mm.getName() + "(");
 
-         if (!mm.getMethod().isStatic()) {
+         if (!mm.getMethod().isStatic() && !isMemberOfScalaObject(mm)) {
             if ((mm.getMethod().getClassModel() == _entryPoint.getClassModel())
-                  || mm.getMethod().getClassModel().isSuperClass(_entryPoint.getClassModel().getClassWeAreModelling())) {
+                  || mm.getMethod().getClassModel().isSuperClass(
+                      _entryPoint.getClassModel().getClassWeAreModelling())) {
                write("This *this");
             } else {
                // Call to an object member or superclass of member
@@ -990,8 +1047,9 @@ public abstract class KernelWriter extends BlockWriter{
                while (classIter.hasNext()) {
                   final ClassModel c = classIter.next();
                   if (mm.getMethod().getClassModel() == c) {
-                     write("__global " + mm.getMethod().getClassModel().getClassWeAreModelling().getName().replace('.', '_')
-                           + " *this");
+                     write("__global " + mm.getMethod().getClassModel()
+                             .getClassWeAreModelling().getName().replace('.',
+                                 '_') + " *this");
                      break;
                   } else if (mm.getMethod().getClassModel().isSuperClass(c.getClassWeAreModelling())) {
                      write("__global " + c.getClassWeAreModelling().getName().replace('.', '_') + " *this");
@@ -1001,7 +1059,7 @@ public abstract class KernelWriter extends BlockWriter{
             }
          }
 
-         boolean alreadyHasFirstArg = !mm.getMethod().isStatic();
+         boolean alreadyHasFirstArg = (!mm.getMethod().isStatic() && !isMemberOfScalaObject(mm));
 
          final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
          for (final LocalVariableInfo lvi : lvte) {
@@ -1067,7 +1125,9 @@ public abstract class KernelWriter extends BlockWriter{
             }
 
             if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
-               assert(outParam == null);
+               if (outParam != null) {
+                   throw new RuntimeException("Multiple output parameters?");
+               }
                outParam = p;
                write(p.getOutputParameterString(this));
             } else {
@@ -1084,7 +1144,9 @@ public abstract class KernelWriter extends BlockWriter{
       write(") {");
       out();
       newLine();
-      assert(outParam != null);
+      if (outParam == null) {
+          throw new RuntimeException("outParam should not be null");
+      }
 
       writeln("int i = get_global_id(0);");
       writeln("int nthreads = get_global_size(0);");
@@ -1122,19 +1184,12 @@ public abstract class KernelWriter extends BlockWriter{
 
          for (ScalaArrayParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
-             if (p.getClazz() != null) {
-               if (p.getClazz().getName().equals(TUPLE2_CLASSNAME)) {
-                 if (p.typeParameterIsObject(0)) {
-                     writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1 + i;");
-                 } else {
-                     writeln("my_" + p.getName() + "->_1 = " + p.getName() + "_1[i];");
-                 }
-
-                 if (p.typeParameterIsObject(1)) {
-                     writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2 + i;");
-                 } else {
-                     writeln("my_" + p.getName() + "->_2 = " + p.getName() + "_2[i];");
-                 }
+             if (p.getClazz() != null &&
+                     (p.getClazz().getName().equals(TUPLE2_CLASSNAME) ||
+                      p.getClazz().getName().equals(DENSEVECTOR_CLASSNAME) ||
+                      p.getClazz().getName().equals(SPARSEVECTOR_CLASSNAME))) {
+                 writeln(p.getInputInitString(this, p.getName()));
+               /*
                } else if (p.getClazz().getName().equals(DENSEVECTOR_CLASSNAME)) {
                  writeln("my_" + p.getName() + "->values = " + p.getName() +
                          "_values + " + p.getName() + "_offsets[i];");
@@ -1146,6 +1201,7 @@ public abstract class KernelWriter extends BlockWriter{
                          "_indices + " + p.getName() + "_offsets[i];");
                  writeln("my_" + p.getName() + "->size = " + p.getName() + "_sizes[i];");
                }
+               */
              }
            }
          }

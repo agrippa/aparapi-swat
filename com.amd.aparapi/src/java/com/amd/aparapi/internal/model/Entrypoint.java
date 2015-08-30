@@ -47,8 +47,8 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodReferenceEnt
 import com.amd.aparapi.internal.util.*;
 
 import com.amd.aparapi.internal.writer.KernelWriter;
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaParameter;
-import com.amd.aparapi.internal.writer.BlockWriter.ScalaArrayParameter;
+import com.amd.aparapi.internal.writer.ScalaParameter;
+import com.amd.aparapi.internal.writer.ScalaArrayParameter;
 import com.amd.aparapi.internal.model.HardCodedClassModels.HardCodedClassModelMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.DescMatcher;
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
@@ -70,6 +70,7 @@ public class Entrypoint implements Cloneable {
    private ClassModel classModel;
 
    public static final String sparseVectorTilingConfig = "sparse_vector.tiling";
+   public static final String denseVectorTilingConfig = "dense_vector.tiling";
    public static final String clDevicePointerSize = "device.pointer_size";
    private final Map<String, String> config;
    public Map<String, String> getConfig() { return config; }
@@ -77,6 +78,12 @@ public class Entrypoint implements Cloneable {
    private final HardCodedClassModels hardCodedClassModels;
 
    public HardCodedClassModels getHardCodedClassModels() {
+       for (ClassModel model : allFieldsClasses) {
+           if (model instanceof HardCodedClassModel) {
+               hardCodedClassModels.addClassModelFor(model.getClassWeAreModelling(),
+                       (HardCodedClassModel)model);
+           }
+       }
        return hardCodedClassModels;
    }
 
@@ -310,14 +317,23 @@ public class Entrypoint implements Cloneable {
     */
    public ClassModel getOrUpdateAllClassAccesses(String className,
           HardCodedClassModelMatcher matcher) throws AparapiException {
-      ClassModel memberClassModel = allFieldsClasses.get(className, ClassModel.wrap(className, matcher));
+      ClassModel memberClassModel = allFieldsClasses.get(className,
+              ClassModel.wrap(className, matcher));
       if (memberClassModel == null) {
          try {
             final Class<?> memberClass = Class.forName(className);
 
-            // Immediately add this class and all its supers if necessary
-            memberClassModel = ClassModel.createClassModel(memberClass, this,
-                matcher);
+            if (className.equals("org.apache.spark.mllib.linalg.DenseVector")) {
+                memberClassModel = DenseVectorClassModel.create(
+                        Integer.parseInt(config.get(denseVectorTilingConfig)));
+            } else if (className.equals("org.apache.spark.mllib.linalg.SparseVector")) {
+                memberClassModel = SparseVectorClassModel.create(
+                        Integer.parseInt(config.get(sparseVectorTilingConfig)));
+            } else {
+                // Immediately add this class and all its supers if necessary
+                memberClassModel = ClassModel.createClassModel(memberClass, this,
+                    matcher);
+            }
 
             if (logger.isLoggable(Level.FINEST)) {
                logger.finest("adding class " + className);
@@ -422,7 +438,8 @@ public class Entrypoint implements Cloneable {
                    }
                };
 
-               final ClassModel memberClassModel = getOrUpdateAllClassAccesses(methodsActualClassName, matcher);
+               final ClassModel memberClassModel = getOrUpdateAllClassAccesses(
+                       methodsActualClassName, matcher);
 
                // false = no invokespecial allowed here
                return memberClassModel.getMethod(_methodEntry, false);
@@ -670,6 +687,10 @@ public class Entrypoint implements Cloneable {
                     new ShouldNotCallMatcher()));
           }
       }
+
+      final String enclosingClass =
+          _classModel.getClassWeAreModelling().getEnclosingClass().getName();
+      addClass(enclosingClass, new String[0]);
 
       if (params != null) {
         for (ScalaArrayParameter p : params) {
@@ -1130,6 +1151,16 @@ public class Entrypoint implements Cloneable {
                        c.setTotalStructSize(totalStructSize);
                    }
                }
+            }
+
+            for (HardCodedClassModel c : hardCodedClassModels) {
+                final ArrayList<FieldNameInfo> fields = c.getStructMembers();
+                if (fields.size() > 0) {
+                    Collections.sort(fields, fieldSizeComparator);
+                    // Now compute the total size for the struct
+                    int totalSize = c.calcTotalStructSize(this);
+                    c.setTotalStructSize(totalSize);
+                }
             }
          }
       }

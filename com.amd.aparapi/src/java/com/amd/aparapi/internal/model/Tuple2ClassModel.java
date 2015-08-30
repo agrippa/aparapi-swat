@@ -45,8 +45,10 @@ public class Tuple2ClassModel extends HardCodedClassModel {
                  * parameter declaration and the other was not then this will
                  * ensure that the resulting merged one has the constructor.
                  */
-                for (HardCodedMethodModel method : other.getMethods()) {
-                    getMethods().add(method);
+                if (other != this) {
+                    for (HardCodedMethodModel method : other.getMethods()) {
+                        getMethods().add(method);
+                    }
                 }
                 return true;
             }

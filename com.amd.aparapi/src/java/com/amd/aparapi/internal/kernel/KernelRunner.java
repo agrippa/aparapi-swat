@@ -78,6 +78,7 @@ import com.amd.aparapi.internal.writer.KernelWriter;
 import com.amd.aparapi.opencl.OpenCL;
 
 import com.amd.aparapi.internal.writer.BlockWriter;
+import com.amd.aparapi.internal.writer.ScalaArrayParameter;
 
 import com.amd.aparapi.internal.model.HardCodedClassModels.ShouldNotCallMatcher;
 import com.amd.aparapi.internal.model.ClassModel.ClassModelMatcher;
@@ -1144,7 +1145,7 @@ public class KernelRunner extends KernelRunnerJNI{
                   String openCL = null;
                   try {
                      openCL = KernelWriter.writeToString(entryPoint,
-                             new java.util.LinkedList<BlockWriter.ScalaArrayParameter>()).kernel;
+                             new java.util.LinkedList<ScalaArrayParameter>()).kernel;
                   } catch (final CodeGenException codeGenException) {
                      return warnFallBackAndExecute(_entrypointName, _range, _passes, codeGenException);
                   } catch (final AparapiException e) {
