@@ -791,6 +791,21 @@ public abstract class KernelWriter extends BlockWriter{
        return true;
    }
 
+   private void writeDenseVectorValueUpdate(String varname) {
+       writeln(varname + "->values = " +
+               "((__global char *)" + varname + "->values) - " +
+               "((__global char *)this->heap);");
+   }
+
+   private void writeSparseVectorValueUpdate(String varname) {
+       writeln(varname + "->values = " +
+               "((__global char *)" + varname + "->values) - " +
+               "((__global char *)this->heap);");
+       writeln(varname + "->indices = " +
+               "((__global char *)" + varname + "->indices) - " +
+               "((__global char *)this->heap);");
+   }
+
    @Override public void write(Entrypoint _entryPoint,
          Collection<ScalaArrayParameter> params) throws CodeGenException {
       final List<String> thisStruct = new ArrayList<String>();
@@ -1189,19 +1204,6 @@ public abstract class KernelWriter extends BlockWriter{
                       p.getClazz().getName().equals(DENSEVECTOR_CLASSNAME) ||
                       p.getClazz().getName().equals(SPARSEVECTOR_CLASSNAME))) {
                  writeln(p.getInputInitString(this, p.getName()));
-               /*
-               } else if (p.getClazz().getName().equals(DENSEVECTOR_CLASSNAME)) {
-                 writeln("my_" + p.getName() + "->values = " + p.getName() +
-                         "_values + " + p.getName() + "_offsets[i];");
-                 writeln("my_" + p.getName() + "->size = " + p.getName() + "_sizes[i];");
-               } else if (p.getClazz().getName().equals(SPARSEVECTOR_CLASSNAME)) {
-                 writeln("my_" + p.getName() + "->values = " + p.getName() +
-                         "_values + " + p.getName() + "_offsets[i];");
-                 writeln("my_" + p.getName() + "->indices = " + p.getName() +
-                         "_indices + " + p.getName() + "_offsets[i];");
-                 writeln("my_" + p.getName() + "->size = " + p.getName() + "_sizes[i];");
-               }
-               */
              }
            }
          }
@@ -1247,6 +1249,13 @@ public abstract class KernelWriter extends BlockWriter{
              if (outParam.getClazz() != null) {
                  if (outParam.getClazz().getName().equals(TUPLE2_CLASSNAME)) {
                      if (outParam.typeParameterIsObject(0)) {
+                         if (outParam.getTypeParameter(0).equals("L" +
+                                     DENSEVECTOR_CLASSNAME + ";")) {
+                             writeDenseVectorValueUpdate("result->_1");
+                         } else if (outParam.getTypeParameter(0).equals("L" +
+                                     SPARSEVECTOR_CLASSNAME + ";")) {
+                             writeSparseVectorValueUpdate("result->_1");
+                         }
                          write(outParam.getName() + "_1[i] = *(result->_1);");
                      } else {
                          write(outParam.getName() + "_1[i] = result->_1;");
@@ -1255,6 +1264,14 @@ public abstract class KernelWriter extends BlockWriter{
                      newLine();
 
                      if (outParam.typeParameterIsObject(1)) {
+                         if (outParam.getTypeParameter(1).equals("L" +
+                                     DENSEVECTOR_CLASSNAME + ";")) {
+                             writeDenseVectorValueUpdate("result->_2");
+                         } else if (outParam.getTypeParameter(1).equals("L" +
+                                     SPARSEVECTOR_CLASSNAME + ";")) {
+                             writeSparseVectorValueUpdate("result->_2");
+                         }
+
                          write(outParam.getName() + "_2[i] = *(result->_2);");
                      } else {
                          write(outParam.getName() + "_2[i] = result->_2;");
@@ -1262,13 +1279,12 @@ public abstract class KernelWriter extends BlockWriter{
                  } else if (outParam.getClazz().getName().equals(
                              DENSEVECTOR_CLASSNAME)) {
                      // Offset in bytes
-                     writeln("result->values = ((__global char *)result->values) - ((__global char *)this->heap);");
+                     writeDenseVectorValueUpdate("result");
                      write(outParam.getName() + "[i] = *result;");
                  } else if (outParam.getClazz().getName().equals(
                              SPARSEVECTOR_CLASSNAME)) {
                      // Offset in bytes
-                     writeln("result->values = ((__global char *)result->values) - ((__global char *)this->heap);");
-                     writeln("result->indices = ((__global char *)result->indices) - ((__global char *)this->heap);");
+                     writeSparseVectorValueUpdate("result");
                      write(outParam.getName() + "[i] = *result;");
                  } else {
                      write(outParam.getName() + "[i] = *result;");

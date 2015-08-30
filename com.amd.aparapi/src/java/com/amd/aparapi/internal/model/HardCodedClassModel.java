@@ -108,9 +108,6 @@ public abstract class HardCodedClassModel extends ClassModel {
     public MethodModel getMethodModel(String _name, String _signature)
             throws AparapiException {
         for (HardCodedMethodModel method : methods) {
-            // System.err.println("      Looking for " + _name + "," + _signature +
-            //         " comparing to " + method.getOriginalName() + "," +
-            //         method.getDescriptor());
             if (method.getOriginalName().equals(_name) &&
                     areSignaturesCompatible(method.getDescriptor(), _signature, _name)) {
                 return method;
