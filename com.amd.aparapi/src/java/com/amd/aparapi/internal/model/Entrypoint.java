@@ -1294,7 +1294,6 @@ public class Entrypoint implements Cloneable {
       String entryClassNameInDotForm =
           _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/',
               '.');
-      System.err.println("Looking for " + entryClassNameInDotForm + " " + methodName);
       if (entryClassNameInDotForm.startsWith("scala.Tuple2")) {
           entryClassNameInDotForm = "scala.Tuple2";
       }
@@ -1305,7 +1304,6 @@ public class Entrypoint implements Cloneable {
          for (final ClassModel memberObjClass : objectArrayFieldsClasses) {
 
            String memberObjClassName = memberObjClass.getClassWeAreModelling().getName();
-           System.err.println("  " + memberObjClassName);
            if (memberObjClassName.equals(entryClassNameInDotForm)) {
                MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
                    memberObjClass);
