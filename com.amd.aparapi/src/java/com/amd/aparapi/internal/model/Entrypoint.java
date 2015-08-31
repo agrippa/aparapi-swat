@@ -478,7 +478,10 @@ public class Entrypoint implements Cloneable {
 
           @Override
           public boolean matches(HardCodedClassModel model) {
-              // TODO can we use the type of field to infer the right Tuple2? Maybe we need to have per-type HardCodedClassModel matches?
+              /*
+               * TODO can we use the type of field to infer the right Tuple2?
+               * Maybe we need to have per-type HardCodedClassModel matches?
+               */
               
               throw new UnsupportedOperationException();
           }
@@ -690,7 +693,6 @@ public class Entrypoint implements Cloneable {
 
       Class<?> enclosingClass = _classModel.getClassWeAreModelling().getEnclosingClass();
       while (enclosingClass != null) {
-          System.err.println("enclosingClass=" + enclosingClass.getName());
           addClass(enclosingClass.getName(), new String[0]);
           enclosingClass = enclosingClass.getEnclosingClass();
       }
