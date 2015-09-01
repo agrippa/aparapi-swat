@@ -71,6 +71,9 @@ public abstract class KernelWriter extends BlockWriter{
    public final static String SPARSE_ARRAY_SIG =
        "[Lorg/apache/spark/mllib/linalg/SparseVector;";
 
+   public final static String internalMapSig =
+       "org/apache/spark/rdd/cl/CLWrapper$.map(ILscala/Function1;)V";
+
    private final String cvtBooleanToChar = "char ";
 
    private final String cvtBooleanArrayToCharStar = "char* ";
@@ -491,6 +494,10 @@ public abstract class KernelWriter extends BlockWriter{
 
             if (m != null) {
                write(m.getName());
+            } else if (_methodEntry.toString().equals(internalMapSig)) {
+              System.err.println("Call to internal map, argument is " +
+                      _methodCall.getArg(0));
+              System.exit(1);
             } else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
               /*
                * Do nothing if we're in a constructor calling the

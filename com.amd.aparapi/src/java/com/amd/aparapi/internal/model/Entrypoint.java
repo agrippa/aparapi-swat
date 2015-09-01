@@ -69,6 +69,11 @@ public class Entrypoint implements Cloneable {
 
    private ClassModel classModel;
 
+   private boolean isWorkSharingKernel = false;
+   public boolean checkIsWorkSharingKernel() {
+       return isWorkSharingKernel;
+   }
+
    public static final String sparseVectorTilingConfig = "sparse_vector.tiling";
    public static final String denseVectorTilingConfig = "dense_vector.tiling";
    public static final String clDevicePointerSize = "device.pointer_size";
@@ -833,7 +838,8 @@ public class Entrypoint implements Cloneable {
                   if (arrayRef instanceof I_GETFIELD) {
                      final I_GETFIELD getField = (I_GETFIELD) arrayRef;
                      final FieldEntry field = getField.getConstantPoolFieldEntry();
-                     final String assignedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                     final String assignedArrayFieldName = field
+                         .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                      arrayFieldAssignments.add(assignedArrayFieldName);
                      addToReferencedFieldNames(assignedArrayFieldName, null);
                      arrayFieldArrayLengthUsed.add(assignedArrayFieldName);
@@ -847,7 +853,8 @@ public class Entrypoint implements Cloneable {
                   if (arrayRef instanceof I_GETFIELD) {
                      final I_GETFIELD getField = (I_GETFIELD) arrayRef;
                      final FieldEntry field = getField.getConstantPoolFieldEntry();
-                     final String accessedArrayFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                     final String accessedArrayFieldName = field
+                         .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                      arrayFieldAccesses.add(accessedArrayFieldName);
                      addToReferencedFieldNames(accessedArrayFieldName, null);
                      arrayFieldArrayLengthUsed.add(accessedArrayFieldName);
@@ -859,24 +866,30 @@ public class Entrypoint implements Cloneable {
                      child = child.getFirstChild();
                   }
                   if (!(child instanceof AccessField)) {
-                     throw new ClassParseException(ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
+                     throw new ClassParseException(
+                             ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
                   }
                   final AccessField childField = (AccessField) child;
-                  final String arrayName = childField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                  final String arrayName = childField
+                      .getConstantPoolFieldEntry().getNameAndTypeEntry()
+                      .getNameUTF8Entry().getUTF8();
                   arrayFieldArrayLengthUsed.add(arrayName);
                   if (logger.isLoggable(Level.FINE)) {
-                     logger.fine("Noted arraylength in " + methodModel.getName() + " on " + arrayName);
+                     logger.fine("Noted arraylength in " +
+                             methodModel.getName() + " on " + arrayName);
                   }
                } else if (instruction instanceof AccessField) {
                   final AccessField access = (AccessField) instruction;
                   final FieldEntry field = access.getConstantPoolFieldEntry();
-                  final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                  final String accessedFieldName = field.getNameAndTypeEntry()
+                      .getNameUTF8Entry().getUTF8();
                   fieldAccesses.add(accessedFieldName);
                   final String signature;
                   if (access instanceof ScalaGetObjectRefField) {
                     ScalaGetObjectRefField scalaGet = (ScalaGetObjectRefField)access;
                     I_CHECKCAST cast = scalaGet.getCast();
-                    signature = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8().replace('.', '/');
+                    signature = cast.getConstantPoolClassEntry()
+                        .getNameUTF8Entry().getUTF8().replace('.', '/');
                     addToReferencedFieldNames(accessedFieldName, "L" + signature);
                   } else {
                     signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
@@ -1019,16 +1032,25 @@ public class Entrypoint implements Cloneable {
 
                   }
 
-               }
-               else if (instruction instanceof I_INVOKEVIRTUAL) {
+               } else if (instruction instanceof I_INVOKEVIRTUAL) {
                   final I_INVOKEVIRTUAL invokeInstruction = (I_INVOKEVIRTUAL) instruction;
+                  final MethodEntry methodEntry = invokeInstruction
+                      .getConstantPoolMethodEntry();
+                  if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
+                      // if (methodModel != this.methodModel) {
+                      //     throw new RuntimeException("Internal map can only " +
+                      //             "be called from the top-level method. " +
+                      //             "Inside " + methodModel.getName() +
+                      //             " but main method is " + this.methodModel.getName());
+                      // }
+                      isWorkSharingKernel = true;
+                  }
                   MethodModel invokedMethod = invokeInstruction.getMethod();
                   FieldEntry getterField = getSimpleGetterField(invokedMethod);
                   if (getterField != null) {
-                     addToReferencedFieldNames(getterField.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(), null);
-                  }
-                  else {
-                     final MethodEntry methodEntry = invokeInstruction.getConstantPoolMethodEntry();
+                     addToReferencedFieldNames(getterField.getNameAndTypeEntry()
+                             .getNameUTF8Entry().getUTF8(), null);
+                  } else {
                      if (Kernel.isMappedMethod(methodEntry)) { //only do this for intrinsics
 
                         if (Kernel.usesAtomic32(methodEntry)) {
@@ -1036,25 +1058,28 @@ public class Entrypoint implements Cloneable {
                         }
 
                         final Arg methodArgs[] = methodEntry.getArgs();
-                        if ((methodArgs.length > 0) && methodArgs[0].isArray()) { //currently array arg can only take slot 0
+                        if ((methodArgs.length > 0) && methodArgs[0].isArray()) {
                            final Instruction arrInstruction = invokeInstruction.getArg(0);
                            if (arrInstruction instanceof AccessField) {
                               final AccessField access = (AccessField) arrInstruction;
                               final FieldEntry field = access.getConstantPoolFieldEntry();
-                              final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+                              final String accessedFieldName = field
+                                  .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                               arrayFieldAssignments.add(accessedFieldName);
                               addToReferencedFieldNames(accessedFieldName, null);
                            }
                            else {
-                              throw new ClassParseException(ClassParseException.TYPE.ACCESSEDOBJECTSETTERARRAY);
+                              throw new ClassParseException(
+                                      ClassParseException.TYPE.ACCESSEDOBJECTSETTERARRAY);
                            }
                         }
                      }
-
                   }
                }
             }
          }
+
+         System.err.println("Is work sharing? " + isWorkSharingKernel);
 
          for (final Map.Entry<String, DerivedFieldInfo> referencedField :
                  referencedFieldNames.entrySet()) {
