@@ -939,13 +939,15 @@ public abstract class KernelWriter extends BlockWriter{
          newLine();
       }
 
-      if (Config.enableDoubles || _entryPoint.requiresDoublePragma()) {
+      // if (Config.enableDoubles || _entryPoint.requiresDoublePragma()) {
          writePragma("cl_khr_fp64", true);
          newLine();
-      }
+      // }
 
       // Heap allocation
-      write("static __global void *alloc(__global void *heap, volatile __global uint *free_index, unsigned int heap_size, int nbytes, int *alloc_failed) {");
+      write("static __global void *alloc(__global void *heap, " +
+              "volatile __global uint *free_index, unsigned int heap_size, " +
+              "int nbytes, int *alloc_failed) {");
       in();
       newLine();
       {
