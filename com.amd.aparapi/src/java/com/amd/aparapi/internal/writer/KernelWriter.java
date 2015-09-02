@@ -528,12 +528,14 @@ public abstract class KernelWriter extends BlockWriter{
               writeln(";");
 
               writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
+              writeln(classModel.getMangledClassName() + " stage" + stageId + ";");
+              writeln("stage" + stageId + " = *(this->stage" + stageId + ");");
               write("for (int i = get_local_id(0); i < *(this->stage_size_ptr); i += get_local_size(0)) {");
               in();
               newLine();
               {
                   writeln(classModel.getMangledClassName() +
-                          "__apply$mcVI$sp(this->stage" + stageId + ", i);");
+                          "__apply$mcVI$sp(&stage" + stageId + ", i);");
 
               }
               out();
@@ -1131,13 +1133,13 @@ public abstract class KernelWriter extends BlockWriter{
                while (classIter.hasNext()) {
                   final ClassModel c = classIter.next();
                   if (mm.getMethod().getClassModel() == c) {
-                     write(addressSpace + " " + mm.getMethod().getClassModel()
+                     write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " + mm.getMethod().getClassModel()
                              .getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this");
                      break;
                   } else if (mm.getMethod().getClassModel().isSuperClass(
                               c.getClassWeAreModelling())) {
-                     write(addressSpace + " " +
+                     write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " +
                              c.getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this");
                      break;
@@ -1208,6 +1210,13 @@ public abstract class KernelWriter extends BlockWriter{
           write("static void worker_thread_kernel(This *this) {");
           in();
           newLine();
+          for (Map.Entry<Integer, ClassModel> lambda :
+                  _entryPoint.getInternalParallelClassModels().entrySet()) {
+              int id = lambda.getKey();
+              ClassModel classModel = lambda.getValue();
+              writeln(classModel.getMangledClassName() + " stage" + id + ";");
+          }
+
           {
               write("while (1) {");
               in();
@@ -1232,10 +1241,11 @@ public abstract class KernelWriter extends BlockWriter{
                           write("case (" + id + "):");
                           in();
                           newLine();
+                          writeln("stage" + id + " = *(this->stage" + id + ");");
                           writeln("for (int i = get_local_id(0); i < " +
                                   "*(this->stage_size_ptr); i += get_local_size(0)) {");
                           writeln(classModel.getMangledClassName() +
-                                  "__apply$mcVI$sp(this->stage" + id + ", i);");
+                                  "__apply$mcVI$sp(&stage" + id + ", i);");
                           writeln("}");
                           writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
                       }
