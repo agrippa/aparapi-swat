@@ -515,32 +515,37 @@ public abstract class KernelWriter extends BlockWriter{
               write(constructorModel.getName() + "(this->stage" + stageId);
               /*
                * The first argument (i=0) here is always a reference to the
-               * enclosing lambda (outer). Skip it.
+               * enclosing lambda (outer). Skip it. Calling the constructor on
+               * the shared stage object initializes its values from the
+               * spawning context.
                */
               for (int i = 1; i < constructorEntry.getStackConsumeCount(); i++) {
                   write(", ");
                   writeInstruction(constructor.getInvokeSpecial().getArg(i));
               }
               writeln(");");
+              // Signal the current stage we are entering
               writeln("*(this->stage_ptr) = " + stageId + "; ");
-              write("*(this->stage_size_ptr) = ");
-              writeInstruction(itersArg);
-              writeln(";");
+              // Signal the dimensionality of this stage
+              write("*(this->stage_size_ptr) = "); writeInstruction(itersArg); writeln(";");
 
+              // Barrier to signal other threads in block
               writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
-              writeln(classModel.getMangledClassName() + " stage" + stageId + ";");
-              writeln("stage" + stageId + " = *(this->stage" + stageId + ");");
-              write("for (int i = get_local_id(0); i < *(this->stage_size_ptr); i += get_local_size(0)) {");
-              in();
-              newLine();
-              {
-                  writeln(classModel.getMangledClassName() +
-                          "__apply$mcVI$sp(&stage" + stageId + ", i);");
+              // writeln(classModel.getMangledClassName() + " stage" + stageId + ";");
+              // writeln("stage" + stageId + " = *(this->stage" + stageId + ");");
+              // write("for (int i = get_local_id(0); i < *(this->stage_size_ptr); i += get_local_size(0)) {");
+              // in();
+              // newLine();
+              // {
+              //     writeln(classModel.getMangledClassName() +
+              //             "__apply$mcVI$sp(&stage" + stageId + ", i);");
 
-              }
-              out();
-              newLine();
-              writeln("}");
+              // }
+              // out();
+              // newLine();
+              // writeln("}");
+
+              // Barrier to wait for other threads in block to finish parallel region
               write("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE)");
 
               isInternalMap = true;
@@ -1222,6 +1227,10 @@ public abstract class KernelWriter extends BlockWriter{
               in();
               newLine();
               {
+                  /*
+                   * Wait for thread 0 to signal all other threads in block with
+                   * current parallel stage.
+                   */
                   writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
                   write("switch (*(this->stage_ptr)) {");
                   in();
@@ -1242,11 +1251,15 @@ public abstract class KernelWriter extends BlockWriter{
                           in();
                           newLine();
                           writeln("stage" + id + " = *(this->stage" + id + ");");
-                          writeln("for (int i = get_local_id(0); i < " +
-                                  "*(this->stage_size_ptr); i += get_local_size(0)) {");
+                          writeln("for (int i = get_local_id(0) - 1; i < " +
+                                  "*(this->stage_size_ptr); i += (get_local_size(0) - 1)) {");
                           writeln(classModel.getMangledClassName() +
                                   "__apply$mcVI$sp(&stage" + id + ", i);");
                           writeln("}");
+                          /*
+                           * Group wait to ensure all threads finish parallel
+                           * region before master thread continues.
+                           */
                           writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
                       }
                       out();
