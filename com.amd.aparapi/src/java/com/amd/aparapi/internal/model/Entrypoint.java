@@ -62,7 +62,8 @@ public class Entrypoint implements Cloneable {
 
    private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
-   private final List<ClassModel.ClassModelField> referencedClassModelFields = new ArrayList<ClassModel.ClassModelField>();
+   private final List<ClassModel.ClassModelField> referencedClassModelFields =
+       new ArrayList<ClassModel.ClassModelField>();
    private final List<Boolean> isBroadcasted = new ArrayList<Boolean>();
 
    private final List<Field> referencedFields = new ArrayList<Field>();
@@ -72,6 +73,39 @@ public class Entrypoint implements Cloneable {
    private boolean isWorkSharingKernel = false;
    public boolean checkIsWorkSharingKernel() {
        return isWorkSharingKernel;
+   }
+
+   private int internalParallelClassModelsCount = 1;
+   private final Map<Integer, ClassModel> internalParallelClassModels =
+       new HashMap<Integer, ClassModel>();
+   private final Map<String, ClassModel> parallelClassModelsByName =
+       new HashMap<String, ClassModel>();
+   private final Map<String, Integer> parallelClassNameToId =
+       new HashMap<String, Integer>();
+
+   private void addParallelClassModel(ClassModel model) {
+       final String name = model.getMangledClassName();
+       if (!parallelClassModelsByName.containsKey(name)) {
+           final int id = internalParallelClassModelsCount++;
+           internalParallelClassModels.put(id, model);
+           parallelClassModelsByName.put(name, model);
+           parallelClassNameToId.put(name, id);
+       }
+   }
+   public Map<Integer, ClassModel> getInternalParallelClassModels() {
+       return internalParallelClassModels;
+   }
+   public int getIdForParallelClassModel(ClassModel model) {
+       String className = model.getMangledClassName();
+       if (!parallelClassModelsByName.containsKey(className)) {
+           throw new RuntimeException("Missing parallel class model " +
+                   className);
+       }
+       return parallelClassNameToId.get(className);
+   }
+   public boolean isParallelClassModel(ClassModel model) {
+       final String name = model.getMangledClassName();
+       return parallelClassNameToId.containsKey(name);
    }
 
    public static final String sparseVectorTilingConfig = "sparse_vector.tiling";
@@ -166,13 +200,14 @@ public class Entrypoint implements Cloneable {
        return objectArrayFieldsClasses.iterator();
    }
 
-   private void addClass(String name, String[] desc) throws AparapiException {
+   private ClassModel addClass(String name, String[] desc) throws AparapiException {
      final ClassModel model = getOrUpdateAllClassAccesses(name,
          new DescMatcher(desc));
      addToObjectArrayFieldsClasses(name, model);
 
      lexicalOrdering.add(name);
      allFieldsClasses.add(name, model);
+     return model;
    }
 
    // Supporting classes of object array members like supers
@@ -377,11 +412,13 @@ public class Entrypoint implements Cloneable {
       return memberClassModel;
    }
 
-   public ClassModelMethod resolveAccessorCandidate(final MethodCall _methodCall, final MethodEntry _methodEntry) throws AparapiException {
-      final String methodsActualClassName = (_methodEntry.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
+   public ClassModelMethod resolveAccessorCandidate(
+           final Instruction callInstance, final MethodEntry _methodEntry)
+           throws AparapiException {
+      final String methodsActualClassName = (_methodEntry.getClassEntry()
+              .getNameUTF8Entry().getUTF8()).replace('/', '.');
 
-      if (_methodCall instanceof VirtualMethodCall) {
-         final Instruction callInstance = ((VirtualMethodCall) _methodCall).getInstanceReference();
+      if (callInstance != null) {
          if (callInstance instanceof AccessArrayElement) {
             final AccessArrayElement arrayAccess = (AccessArrayElement) callInstance;
             final Instruction refAccess = arrayAccess.getArrayRef();
@@ -389,7 +426,8 @@ public class Entrypoint implements Cloneable {
 
                // It is a call from a member obj array element
                if (logger.isLoggable(Level.FINE)) {
-                  logger.fine("Looking for class in accessor call: " + methodsActualClassName);
+                  logger.fine("Looking for class in accessor call: " +
+                          methodsActualClassName);
                }
 
                final String methodName =
@@ -461,6 +499,7 @@ public class Entrypoint implements Cloneable {
    public void updateObjectMemberFieldAccesses(final String className,
           final FieldEntry field) throws AparapiException {
       final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+      System.err.println("Updating field access for " + className + " " + accessedFieldName);
 
       if (accessedFieldName.equals("MODULE$")) {
         return;
@@ -569,16 +608,29 @@ public class Entrypoint implements Cloneable {
       }
    }
 
+   private static Instruction getCallInstance(final MethodCall methodCall) {
+      if (methodCall instanceof VirtualMethodCall) {
+          return ((VirtualMethodCall) methodCall).getInstanceReference();
+      } else {
+          return null;
+      }
+   }
+
    /*
     * Find a suitable call target in the kernel class, supers, object members or static calls
     */
-   ClassModelMethod resolveCalledMethod(final MethodCall methodCall, ClassModel classModel) throws AparapiException {
-      final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+   ClassModelMethod resolveCalledMethod(final MethodEntry methodEntry,
+           final boolean isSpecial, final boolean isStatic,
+           ClassModel classModel, Instruction callInstance) throws AparapiException {
+      // final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+      // final boolean isSpecial = methodCall instanceof I_INVOKESPECIAL;
+      // final boolean isStatic = methodCall instanceof I_INVOKESTATIC;
 
       int thisClassIndex = classModel.getThisClassConstantPoolIndex();//arf
-      boolean isMapped = (thisClassIndex != methodEntry.getClassIndex()) && Kernel.isMappedMethod(methodEntry);
+      boolean isMapped = (thisClassIndex != methodEntry.getClassIndex()) &&
+          Kernel.isMappedMethod(methodEntry);
       if (logger.isLoggable(Level.FINE)) {
-         if (methodCall instanceof I_INVOKESPECIAL) {
+         if (isSpecial) {
             logger.fine("Method call to super: " + methodEntry);
          } else if (thisClassIndex != methodEntry.getClassIndex()) {
             logger.fine("Method call to ??: " + methodEntry + ", isMappedMethod=" + isMapped);
@@ -587,21 +639,22 @@ public class Entrypoint implements Cloneable {
          }
       }
 
-      ClassModelMethod m = classModel.getMethod(methodEntry, (methodCall instanceof I_INVOKESPECIAL) ? true : false);
+      ClassModelMethod m = classModel.getMethod(methodEntry, isSpecial);
 
       // Did not find method in this class or supers. Look for data member object arrays
       if (m == null && !isMapped) {
-         m = resolveAccessorCandidate(methodCall, methodEntry);
+         m = resolveAccessorCandidate(callInstance, methodEntry);
       }
 
       // Look for a intra-object call in a object member
       if (m == null && !isMapped) {
-         String targetMethodOwner = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+         String targetMethodOwner = methodEntry.getClassEntry()
+             .getNameUTF8Entry().getUTF8().replace('/', '.');
          final Set<ClassModel> possibleMatches = new HashSet<ClassModel>();
 
          for (ClassModel c : allFieldsClasses) {
             if (c.getClassWeAreModelling().getName().equals(targetMethodOwner)) {
-               m = c.getMethod(methodEntry, (methodCall instanceof I_INVOKESPECIAL) ? true : false);
+               m = c.getMethod(methodEntry, isSpecial);
             } else if (c.classNameMatches(targetMethodOwner)) {
                possibleMatches.add(c);
             }
@@ -609,8 +662,7 @@ public class Entrypoint implements Cloneable {
 
          if (m == null) {
              for (ClassModel c : possibleMatches) {
-                 m = c.getMethod(methodEntry,
-                     (methodCall instanceof I_INVOKESPECIAL) ? true : false);
+                 m = c.getMethod(methodEntry, isSpecial);
                  if (m != null) break;
              }
          }
@@ -623,8 +675,9 @@ public class Entrypoint implements Cloneable {
       ignorableClasses.add("scala/runtime/FloatRef");
       ignorableClasses.add("scala/runtime/DoubleRef");
       // Look for static call to some other class
-      if ((m == null) && !isMapped && (methodCall instanceof I_INVOKESTATIC) &&
-          !ignorableClasses.contains(methodEntry.getClassEntry().getNameUTF8Entry().getUTF8())) {
+      if ((m == null) && !isMapped && isStatic &&
+          !ignorableClasses.contains(methodEntry.getClassEntry()
+              .getNameUTF8Entry().getUTF8())) {
 
          String otherClassName =
              methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
@@ -634,16 +687,12 @@ public class Entrypoint implements Cloneable {
 
              @Override
              public boolean matches(HardCodedClassModel model) {
-                 // TODO use _methodCall and _methodEntry?
+                 // TODO use _methodEntry?
                  throw new UnsupportedOperationException();
              }
          };
          ClassModel otherClassModel = getOrUpdateAllClassAccesses(otherClassName, matcher);
 
-         //if (logger.isLoggable(Level.FINE)) {
-         //   logger.fine("Looking for: " + methodEntry + " in other class " + otherClass.getName());
-         //}
-         // false because INVOKESPECIAL not allowed here 
          m = otherClassModel.getMethod(methodEntry, false);
       }
 
@@ -669,6 +718,40 @@ public class Entrypoint implements Cloneable {
            }
        }
        return false;
+   }
+
+   private ClassModelMethod handleInternalMapCall(
+           final I_INVOKEVIRTUAL invokeInstruction,
+           final MethodEntry methodEntry) throws AparapiException {
+       isWorkSharingKernel = true;
+
+       Instruction loopDimensionality = invokeInstruction.getArg(0);
+       if (!(invokeInstruction.getArg(1) instanceof ConstructorCall)) {
+           throw new RuntimeException("Expected lambda as second argument to " +
+                   "CLWrapper.map");
+       }
+       ConstructorCall lambdaConstructor = (ConstructorCall)invokeInstruction
+           .getArg(1);
+       I_INVOKESPECIAL actual = lambdaConstructor.getInvokeSpecial();
+       final MethodEntry parallelMethodEntry = actual.getConstantPoolMethodEntry();
+       final String methodClass =
+           parallelMethodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+       final String methodName = parallelMethodEntry
+           .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+
+       // Add the containing parallel lambda class
+       addClass(methodModel.getMethod().getClassModel()
+               .getClassWeAreModelling().getName(),
+               new String[0]);
+       // Add the internal parallel lambda
+       final String parallelClassName =
+           methodClass.replace('/', '.');
+       final ClassModel parallelClassModel =
+           addClass(parallelClassName, new String[0]);
+       addParallelClassModel(parallelClassModel);
+       final ClassModelMethod m = parallelClassModel.getMethod(
+               "apply$mcVI$sp", "(I)V");
+       return m;
    }
 
    public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
@@ -734,7 +817,11 @@ public class Entrypoint implements Cloneable {
 
       // Collect all methods called directly from kernel's run method
       for (final MethodCall methodCall : methodModel.getMethodCalls()) {
-         ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
+         ClassModelMethod m = resolveCalledMethod(
+                 methodCall.getConstantPoolMethodEntry(),
+                 methodCall instanceof I_INVOKESPECIAL,
+                 methodCall instanceof I_INVOKESTATIC, classModel,
+                 getCallInstance(methodCall));
          if ((m != null) && !methodMap.keySet().contains(m) && !noCL(m)) {
             final MethodModel target = new LoadedMethodModel(m, this);
             methodMap.put(m, target);
@@ -749,19 +836,37 @@ public class Entrypoint implements Cloneable {
          discovered = false;
          for (final MethodModel mm : new ArrayList<MethodModel>(methodMap.values())) {
             for (final MethodCall methodCall : mm.getMethodCalls()) {
+               final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+               final String methodName = methodEntry.getNameAndTypeEntry()
+                   .getNameUTF8Entry().getUTF8();
+               final String methodClass = methodEntry.getClassEntry()
+                   .getNameUTF8Entry().getUTF8();
 
-               ClassModelMethod m = resolveCalledMethod(methodCall, classModel);
+               //TODO handle internal maps here
+               final ClassModelMethod m;
+               if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
+                   m = handleInternalMapCall((I_INVOKEVIRTUAL)methodCall, methodEntry);
+               } else {
+                   m = resolveCalledMethod(methodEntry,
+                           methodCall instanceof I_INVOKESPECIAL,
+                           methodCall instanceof I_INVOKESTATIC, classModel,
+                           getCallInstance(methodCall));
+               }
+
                if (m != null && !noCL(m)) {
                   MethodModel target = null;
                   if (methodMap.keySet().contains(m)) {
                      // we remove and then add again.  Because this is a LinkedHashMap this 
                      // places this at the end of the list underlying the map
                      // then when we reverse the collection (below) we get the method 
-                     // declarations in the correct order.  We are trying to avoid creating forward references
+                     // declarations in the correct order.  We are trying to
+                     // avoid creating forward references
                      target = methodMap.remove(m);
                      if (logger.isLoggable(Level.FINEST)) {
-                        logger.fine("repositioning : " + m.getClassModel().getClassWeAreModelling().getName() + " " + m.getName()
-                              + " " + m.getDescriptor());
+                        logger.fine("repositioning : " +
+                                m.getClassModel().getClassWeAreModelling()
+                                .getName() + " " + m.getName() + " " +
+                                m.getDescriptor());
                      }
                   } else {
                      target = new LoadedMethodModel(m, this);
@@ -883,6 +988,7 @@ public class Entrypoint implements Cloneable {
                   final FieldEntry field = access.getConstantPoolFieldEntry();
                   final String accessedFieldName = field.getNameAndTypeEntry()
                       .getNameUTF8Entry().getUTF8();
+                  System.err.println("accessed field " + accessedFieldName);
                   fieldAccesses.add(accessedFieldName);
                   final String signature;
                   if (access instanceof ScalaGetObjectRefField) {
@@ -1036,15 +1142,6 @@ public class Entrypoint implements Cloneable {
                   final I_INVOKEVIRTUAL invokeInstruction = (I_INVOKEVIRTUAL) instruction;
                   final MethodEntry methodEntry = invokeInstruction
                       .getConstantPoolMethodEntry();
-                  if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
-                      // if (methodModel != this.methodModel) {
-                      //     throw new RuntimeException("Internal map can only " +
-                      //             "be called from the top-level method. " +
-                      //             "Inside " + methodModel.getName() +
-                      //             " but main method is " + this.methodModel.getName());
-                      // }
-                      isWorkSharingKernel = true;
-                  }
                   MethodModel invokedMethod = invokeInstruction.getMethod();
                   FieldEntry getterField = getSimpleGetterField(invokedMethod);
                   if (getterField != null) {
@@ -1149,7 +1246,8 @@ public class Entrypoint implements Cloneable {
                }
             };
 
-            for (String className : lexicalOrdering) {
+            // for (String className : lexicalOrdering) {
+            //    System.err.println("className=" + className);
                for (final ClassModel c : objectArrayFieldsClasses) {
                    final ArrayList<FieldNameInfo> fields = c.getStructMembers();
                    if (fields.size() > 0) {
@@ -1168,13 +1266,14 @@ public class Entrypoint implements Cloneable {
                              long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
                              final String fieldType = f.desc;
 
-                             c.addStructMember(fieldOffset, TypeSpec.valueOf(fieldType), f.name);
+                             c.addStructMemberInfo(fieldOffset,
+                                     fieldType, f.name);
 
                              final int fSize = getSizeOf(fieldType);
 
                              totalSize += fSize;
                           }
-                          c.generateStructMemberArray();
+                          c.generateStructMemberArray(this);
                        }
 
                        // compute total size for OpenCL buffer
@@ -1182,7 +1281,7 @@ public class Entrypoint implements Cloneable {
                        c.setTotalStructSize(totalStructSize);
                    }
                }
-            }
+            // }
 
             for (HardCodedClassModel c : hardCodedClassModels) {
                 final ArrayList<FieldNameInfo> fields = c.getStructMembers();

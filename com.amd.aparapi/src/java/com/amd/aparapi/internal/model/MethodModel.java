@@ -85,7 +85,8 @@ public abstract class MethodModel {
       return calledMethods;
    }
 
-   public void checkForRecursion(Set<MethodModel> transitiveCalledMethods) throws AparapiException {
+   public void checkForRecursion(Set<MethodModel> transitiveCalledMethods)
+        throws AparapiException {
 
       if (transitiveCalledMethods.contains(this)) {
          throw new ClassParseException(ClassParseException.TYPE.RECURSION, getName());

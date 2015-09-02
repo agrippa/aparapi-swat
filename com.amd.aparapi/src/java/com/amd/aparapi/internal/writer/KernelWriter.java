@@ -284,8 +284,10 @@ public abstract class KernelWriter extends BlockWriter{
         * Though I guess at that point you might as well just use the input as
         * the output, which would work (I think?).
         */
-       String storeLengthStr = "*((__global long *)" + allocVarName + ") = (" + countStr + ");";
-       String fixAllocVar = allocVarName + " = (__global " + typeStr + " *)(((__global long *)" + allocVarName + ") + 1); ";
+       String storeLengthStr = "*((__global long *)" + allocVarName + ") = (" +
+           countStr + ");";
+       String fixAllocVar = allocVarName + " = (__global " + typeStr +
+           " *)(((__global long *)" + allocVarName + ") + 1); ";
 
        writeBeforeCurrentLine(allocStr + " " + storeLengthStr + " " + fixAllocVar);
        write(allocVarName);
@@ -352,11 +354,13 @@ public abstract class KernelWriter extends BlockWriter{
       final String methodClass =
           _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
 
-      if (methodName.equals("<init>") && !_methodEntry.toString().equals(
-                  "java/lang/Object.<init>()V")) {
-          writeConstructorCall(new ConstructorCall(
-                      ((Instruction)_methodCall).getMethod(),
-                      (I_INVOKESPECIAL)_methodCall, null));
+      if (methodName.equals("<init>")) {
+          if (!_methodEntry.toString().equals("java/lang/Object.<init>()V") &&
+                !_methodEntry.toString().startsWith("scala/runtime/AbstractFunction1")) {
+              writeConstructorCall(new ConstructorCall(
+                          ((Instruction)_methodCall).getMethod(),
+                          (I_INVOKESPECIAL)_methodCall, null));
+          }
           return false;
       }
 
@@ -478,6 +482,8 @@ public abstract class KernelWriter extends BlockWriter{
          final String intrinsicMapping = Kernel.getMappedMethodName(_methodEntry);
          boolean isIntrinsic = false;
 
+         boolean isInternalMap = false;
+
          if (intrinsicMapping == null) {
             if (entryPoint == null) {
                 throw new RuntimeException("entryPoint should not be null");
@@ -495,9 +501,47 @@ public abstract class KernelWriter extends BlockWriter{
             if (m != null) {
                write(m.getName());
             } else if (_methodEntry.toString().equals(internalMapSig)) {
-              System.err.println("Call to internal map, argument is " +
-                      _methodCall.getArg(0));
-              System.exit(1);
+              if (!(_methodCall.getArg(1) instanceof ConstructorCall)) {
+                  throw new RuntimeException("Expected lambda as second " + 
+                          "argument to CLWrapper.map");
+              }
+              final Instruction itersArg = _methodCall.getArg(0);
+              final ConstructorCall constructor = (ConstructorCall)_methodCall.getArg(1);
+              final MethodEntry constructorEntry = constructor.getInvokeSpecial()
+                  .getConstantPoolMethodEntry();
+              MethodModel constructorModel = entryPoint.getCallTarget(constructorEntry, true);
+              final ClassModel classModel = constructorModel.getMethod().getClassModel();
+              final int stageId = entryPoint.getIdForParallelClassModel(classModel);
+              write(constructorModel.getName() + "(this->stage" + stageId);
+              /*
+               * The first argument (i=0) here is always a reference to the
+               * enclosing lambda (outer). Skip it.
+               */
+              for (int i = 1; i < constructorEntry.getStackConsumeCount(); i++) {
+                  write(", ");
+                  writeInstruction(constructor.getInvokeSpecial().getArg(i));
+              }
+              writeln(");");
+              writeln("*(this->stage_ptr) = " + stageId + "; ");
+              write("*(this->stage_size_ptr) = ");
+              writeInstruction(itersArg);
+              writeln(";");
+
+              writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
+              write("for (int i = get_local_id(0); i < *(this->stage_size_ptr); i += get_local_size(0)) {");
+              in();
+              newLine();
+              {
+                  writeln(classModel.getMangledClassName() +
+                          "__apply$mcVI$sp(this->stage" + stageId + ", i);");
+
+              }
+              out();
+              newLine();
+              writeln("}");
+              write("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE)");
+
+              isInternalMap = true;
             } else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
               /*
                * Do nothing if we're in a constructor calling the
@@ -562,7 +606,7 @@ public abstract class KernelWriter extends BlockWriter{
             write(intrinsicMapping);
          }
 
-         if (!isBroadcasted && !isDenseVectorCreate && !isSparseVectorCreate) {
+         if (!isInternalMap && !isBroadcasted && !isDenseVectorCreate && !isSparseVectorCreate) {
              boolean isScalaStaticObjectCall = false;
              write("(");
 
@@ -983,11 +1027,21 @@ public abstract class KernelWriter extends BlockWriter{
          write(line);
          writeln(";");
       }
+      if (_entryPoint.checkIsWorkSharingKernel()) {
+          writeln("__local int * stage_ptr;");
+          writeln("__local int * stage_size_ptr;");
+          for (Map.Entry<Integer, ClassModel> lambda :
+                  _entryPoint.getInternalParallelClassModels().entrySet()) {
+              writeln("__local " + lambda.getValue().getMangledClassName() + " * stage" +
+                      lambda.getKey() + ";");
+          }
+      }
       out();
       write("} This;");
       newLine();
 
-      final List<MethodModel> merged = new ArrayList<MethodModel>(_entryPoint.getCalledMethods().size() + 1);
+      final List<MethodModel> merged = new ArrayList<MethodModel>(
+              _entryPoint.getCalledMethods().size() + 1);
       merged.addAll(_entryPoint.getCalledMethods());
       merged.add(_entryPoint.getMethodModel());
 
@@ -1017,6 +1071,9 @@ public abstract class KernelWriter extends BlockWriter{
          if (mm.isPrivateMemoryGetter()) {
             continue;
          }
+         boolean isParallelModel = entryPoint.isParallelClassModel(
+                 mm.getMethod().getClassModel());
+         String addressSpace = isParallelModel ? "__local" : "__global";
 
          final String returnType = mm.getReturnType();
          this.currentReturnType = returnType;
@@ -1042,7 +1099,9 @@ public abstract class KernelWriter extends BlockWriter{
          if (mm.getSimpleName().equals("<init>")) {
            // Transform constructors to return a reference to their object type
            ClassModel owner = mm.getMethod().getClassModel();
-           write("static __global " + owner.getClassWeAreModelling().getName().replace('.', '_') + " * ");
+           write("static " + addressSpace + " " +
+                   owner.getClassWeAreModelling().getName().replace('.', '_') +
+                   " * ");
            processingConstructor = true;
          } else if (returnType.startsWith("L")) {
            write("static __global " + fullReturnType);
@@ -1072,12 +1131,15 @@ public abstract class KernelWriter extends BlockWriter{
                while (classIter.hasNext()) {
                   final ClassModel c = classIter.next();
                   if (mm.getMethod().getClassModel() == c) {
-                     write("__global " + mm.getMethod().getClassModel()
+                     write(addressSpace + " " + mm.getMethod().getClassModel()
                              .getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this");
                      break;
-                  } else if (mm.getMethod().getClassModel().isSuperClass(c.getClassWeAreModelling())) {
-                     write("__global " + c.getClassWeAreModelling().getName().replace('.', '_') + " *this");
+                  } else if (mm.getMethod().getClassModel().isSuperClass(
+                              c.getClassWeAreModelling())) {
+                     write(addressSpace + " " +
+                             c.getClassWeAreModelling().getName().replace('.',
+                                 '_') + " *this");
                      break;
                   }
                }
@@ -1091,6 +1153,13 @@ public abstract class KernelWriter extends BlockWriter{
             if ((lvi.getStart() == 0) && ((lvi.getVariableIndex() != 0) ||
                         mm.getMethod().isStatic())) { // full scope but skip this
                final String descriptor = lvi.getVariableDescriptor();
+
+               if (processingConstructor && isParallelModel &&
+                       lvi.getVariableName().equals("$outer")) {
+                   // Skip reference to enclosing lambda, as it has no fields
+                   continue;
+               }
+
                if (alreadyHasFirstArg) {
                   write(", ");
                }
@@ -1135,6 +1204,56 @@ public abstract class KernelWriter extends BlockWriter{
          newLine();
       }
 
+      if (_entryPoint.requiresHeap()) {
+          write("static void worker_thread_kernel(This *this) {");
+          in();
+          newLine();
+          {
+              write("while (1) {");
+              in();
+              newLine();
+              {
+                  writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
+                  write("switch (*(this->stage_ptr)) {");
+                  in();
+                  newLine();
+                  {
+                      write("case (0):"); // done signal
+                      in();
+                      newLine();
+                      write("break;");
+                      out();
+                      newLine();
+
+                      for (Map.Entry<Integer, ClassModel> lambda :
+                              _entryPoint.getInternalParallelClassModels().entrySet()) {
+                          int id = lambda.getKey();
+                          ClassModel classModel = lambda.getValue();
+                          write("case (" + id + "):");
+                          in();
+                          newLine();
+                          writeln("for (int i = get_local_id(0); i < " +
+                                  "*(this->stage_size_ptr); i += get_local_size(0)) {");
+                          writeln(classModel.getMangledClassName() +
+                                  "__apply$mcVI$sp(this->stage" + id + ", i);");
+                          writeln("}");
+                          writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
+                      }
+                      out();
+                  }
+                  out();
+                  newLine();
+              }
+              write("}");
+              out();
+              newLine();
+          }
+          out();
+          writeln("}");
+      }
+      writeln("}");
+      newLine();
+
       ScalaArrayParameter outParam = null;
       write("__kernel void run(");
       in(); in();
@@ -1173,11 +1292,20 @@ public abstract class KernelWriter extends BlockWriter{
           throw new RuntimeException("outParam should not be null");
       }
 
-      writeln("int i = get_global_id(0);");
-      writeln("int nthreads = get_global_size(0);");
-
       writeln("This thisStruct;");
       writeln("This* this=&thisStruct;");
+      if (_entryPoint.checkIsWorkSharingKernel()) {
+          writeln("__local int stage;");
+          writeln("__local int stage_size;");
+          writeln("this->stage_ptr = &stage;");
+          writeln("this->stage_size_ptr = &stage_size;");
+          for (Map.Entry<Integer, ClassModel> lambda :
+                  _entryPoint.getInternalParallelClassModels().entrySet()) {
+              writeln("__local " + lambda.getValue().getMangledClassName() + " stage" +
+                      lambda.getKey() + ";");
+              writeln("this->stage" + lambda.getKey() + " = &stage" + lambda.getKey() + ";");
+          }
+      }
       for (final String line : assigns) {
          write(line);
          writeln(";");
@@ -1194,7 +1322,11 @@ public abstract class KernelWriter extends BlockWriter{
         }
       }
 
-      write("for (; i < N; i += nthreads) {");
+      if (_entryPoint.checkIsWorkSharingKernel()) {
+        write("for (int i = get_group_id(0); i < N; i += get_num_groups(0)) {");
+      } else {
+        write("for (int i = get_global_id(0); i < N; i += get_global_size(0)) {");
+      }
       in();
       newLine();
       {
@@ -1218,6 +1350,12 @@ public abstract class KernelWriter extends BlockWriter{
            }
          }
 
+         if (_entryPoint.checkIsWorkSharingKernel()) {
+             write("if (get_local_id(0) == 0) {");
+             in();
+             newLine();
+         }
+
          if (outParam.getClazz() != null) {
            write("__global " + outParam.getType() + "* result = " +
                _entryPoint.getMethodModel().getName() + "(this");
@@ -1238,6 +1376,11 @@ public abstract class KernelWriter extends BlockWriter{
          }
          write(");");
          newLine();
+
+         if (_entryPoint.checkIsWorkSharingKernel()) {
+             writeln("*(this->stage_ptr) = 0;");
+             writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
+         }
 
          if (_entryPoint.requiresHeap()) {
            write("if (this->alloc_failed) {");
@@ -1307,6 +1450,21 @@ public abstract class KernelWriter extends BlockWriter{
            newLine();
            write("}");
          }
+
+         if (_entryPoint.checkIsWorkSharingKernel()) {
+             out();
+             newLine();
+             write("} else {");
+             in();
+             newLine();
+             {
+                 write("worker_thread_kernel(this);");
+             }
+             out();
+             newLine();
+             writeln("}");
+         }
+
       }
       out();
       newLine();

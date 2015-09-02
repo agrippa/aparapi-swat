@@ -1999,7 +1999,8 @@ public abstract class ClassModel {
 
        @Override
        public String toString() {
-           return "[\"" + typ + "\", \"" + name + "\", " + offset + ", " + id + "]";
+           return "[\"" + typ + "\", \"" + name +
+               "\", " + offset + ", " + id + "]";
        }
    }
 
@@ -2812,6 +2813,8 @@ public abstract class ClassModel {
    public static final int INT = 0;
    public static final int FLOAT = 1;
    public static final int DOUBLE = 2;
+   public static final int POINTER = 3;
+
    protected int[] types = null;
    protected int[] sizes = null;
    protected long[] offsets = null;
@@ -2823,7 +2826,7 @@ public abstract class ClassModel {
       return structMembers;
    }
 
-   public void generateStructMemberArray() {
+   public void generateStructMemberArray(Entrypoint entryPoint) {
        if (types == null || structMemberInfo.size() != types.length) {
            types = new int[structMemberInfo.size()];
            sizes = new int[structMemberInfo.size()];
@@ -2844,6 +2847,13 @@ public abstract class ClassModel {
                case D:
                    types[index] = DOUBLE;
                    sizes[index] = 8;
+                   break;
+               case O:
+                   final int pointerSize = Integer.parseInt(
+                           entryPoint.getConfig().get(
+                               Entrypoint.clDevicePointerSize));
+                   types[index] = POINTER;
+                   sizes[index] = pointerSize;
                    break;
                default:
                    throw new RuntimeException("Unexpected type " +
@@ -2886,7 +2896,22 @@ public abstract class ClassModel {
        return structMembers.get(index);
    }
 
-   public void addStructMember(long offset, TypeSpec typ, String name) {
+   public void addStructMemberInfo(long offset, String fieldType, String name) {
+
+       boolean haveTypeSpec = false;
+       for (TypeSpec t : TypeSpec.values()) {
+           if (t.getShortName().equals(fieldType)) {
+               haveTypeSpec = true;
+           }
+       }
+
+       final TypeSpec typ;
+       if (haveTypeSpec) {
+           typ = TypeSpec.valueOf(fieldType);
+       } else {
+           typ = TypeSpec.O;
+       }
+
        FieldDescriptor newField = new FieldDescriptor(structMemberId, typ,
              name, offset);
        for (FieldDescriptor d : structMemberInfo) {
