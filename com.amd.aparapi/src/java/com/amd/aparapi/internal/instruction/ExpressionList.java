@@ -795,19 +795,14 @@ public class ExpressionList{
                   }
                }
             }
-            if (tail != null) {
-                System.err.println("startPc=" + startPc + " " + tail + " " + tail.getThisPC() + " " + tail.getLength());
-            }
             if (startPc < Short.MAX_VALUE) {
                logger.fine("Scope block from " + startPc + " to  " + (tail.getThisPC() + tail.getLength()));
                for (Instruction i = head; i != null; i = i.getNextPC()) {
                   if (i.getThisPC() == startPc) {
-                     System.err.println("root=" + i.getRootExpr());
                      if (i.getRootExpr().getPrevExpr() != null) {
                          final Instruction startInstruction = i.getRootExpr().getPrevExpr();
                          logger.fine("Start = " + startInstruction);
 
-                         System.err.println(startInstruction + " " + methodModel.getName());
                          addAsComposites(ByteCode.COMPOSITE_ARBITRARY_SCOPE, startInstruction.getPrevExpr(), null);
                          handled = true;
                          break;

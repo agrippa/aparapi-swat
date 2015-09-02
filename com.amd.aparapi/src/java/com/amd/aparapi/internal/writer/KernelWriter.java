@@ -1204,7 +1204,7 @@ public abstract class KernelWriter extends BlockWriter{
          newLine();
       }
 
-      if (_entryPoint.requiresHeap()) {
+      if (_entryPoint.checkIsWorkSharingKernel()) {
           write("static void worker_thread_kernel(This *this) {");
           in();
           newLine();
@@ -1250,9 +1250,9 @@ public abstract class KernelWriter extends BlockWriter{
           }
           out();
           writeln("}");
+          writeln("}");
+          newLine();
       }
-      writeln("}");
-      newLine();
 
       ScalaArrayParameter outParam = null;
       write("__kernel void run(");

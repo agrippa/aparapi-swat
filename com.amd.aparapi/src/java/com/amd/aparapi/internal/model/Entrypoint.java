@@ -499,7 +499,6 @@ public class Entrypoint implements Cloneable {
    public void updateObjectMemberFieldAccesses(final String className,
           final FieldEntry field) throws AparapiException {
       final String accessedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-      System.err.println("Updating field access for " + className + " " + accessedFieldName);
 
       if (accessedFieldName.equals("MODULE$")) {
         return;
@@ -988,7 +987,6 @@ public class Entrypoint implements Cloneable {
                   final FieldEntry field = access.getConstantPoolFieldEntry();
                   final String accessedFieldName = field.getNameAndTypeEntry()
                       .getNameUTF8Entry().getUTF8();
-                  System.err.println("accessed field " + accessedFieldName);
                   fieldAccesses.add(accessedFieldName);
                   final String signature;
                   if (access instanceof ScalaGetObjectRefField) {
@@ -1175,8 +1173,6 @@ public class Entrypoint implements Cloneable {
                }
             }
          }
-
-         System.err.println("Is work sharing? " + isWorkSharingKernel);
 
          for (final Map.Entry<String, DerivedFieldInfo> referencedField :
                  referencedFieldNames.entrySet()) {
