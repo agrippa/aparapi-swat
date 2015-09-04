@@ -519,7 +519,7 @@ public abstract class KernelWriter extends BlockWriter{
                * the shared stage object initializes its values from the
                * spawning context.
                */
-              for (int i = 1; i < constructorEntry.getStackConsumeCount(); i++) {
+              for (int i = 0; i < constructorEntry.getStackConsumeCount(); i++) {
                   write(", ");
                   writeInstruction(constructor.getInvokeSpecial().getArg(i));
               }
@@ -1148,11 +1148,11 @@ public abstract class KernelWriter extends BlockWriter{
                         mm.getMethod().isStatic())) { // full scope but skip this
                final String descriptor = lvi.getVariableDescriptor();
 
-               if (processingConstructor && isParallelModel &&
-                       lvi.getVariableName().equals("$outer")) {
-                   // Skip reference to enclosing lambda, as it has no fields
-                   continue;
-               }
+               // if (processingConstructor && isParallelModel &&
+               //         lvi.getVariableName().equals("$outer")) {
+               //     // Skip reference to enclosing lambda, as it has no fields
+               //     continue;
+               // }
 
                if (alreadyHasFirstArg) {
                   write(", ");

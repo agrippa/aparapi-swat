@@ -765,6 +765,7 @@ public class Entrypoint implements Cloneable {
        if (constructorMethodModel == null) {
            throw new RuntimeException("constructor of lambda must be non-null");
        }
+       System.err.println(actual.getConstantPoolMethodEntry().toString());
        final MethodModel constructorTarget = new LoadedMethodModel(constructorMethodModel, this);
        methodMap.put(constructorMethodModel, constructorTarget);
        currMethodModel.getCalledMethods().add(constructorTarget);
