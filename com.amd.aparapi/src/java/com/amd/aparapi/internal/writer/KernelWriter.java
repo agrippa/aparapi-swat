@@ -531,19 +531,6 @@ public abstract class KernelWriter extends BlockWriter{
 
               // Barrier to signal other threads in block
               writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
-              // writeln(classModel.getMangledClassName() + " stage" + stageId + ";");
-              // writeln("stage" + stageId + " = *(this->stage" + stageId + ");");
-              // write("for (int i = get_local_id(0); i < *(this->stage_size_ptr); i += get_local_size(0)) {");
-              // in();
-              // newLine();
-              // {
-              //     writeln(classModel.getMangledClassName() +
-              //             "__apply$mcVI$sp(&stage" + stageId + ", i);");
-
-              // }
-              // out();
-              // newLine();
-              // writeln("}");
 
               // Barrier to wait for other threads in block to finish parallel region
               write("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE)");
@@ -1215,6 +1202,7 @@ public abstract class KernelWriter extends BlockWriter{
           write("static void worker_thread_kernel(This *this) {");
           in();
           newLine();
+          writeln("bool done = false;");
           for (Map.Entry<Integer, ClassModel> lambda :
                   _entryPoint.getInternalParallelClassModels().entrySet()) {
               int id = lambda.getKey();
@@ -1223,7 +1211,7 @@ public abstract class KernelWriter extends BlockWriter{
           }
 
           {
-              write("while (1) {");
+              write("while (!done) {");
               in();
               newLine();
               {
@@ -1239,6 +1227,7 @@ public abstract class KernelWriter extends BlockWriter{
                       write("case (0):"); // done signal
                       in();
                       newLine();
+                      writeln("done = true;");
                       write("break;");
                       out();
                       newLine();
@@ -1251,8 +1240,8 @@ public abstract class KernelWriter extends BlockWriter{
                           in();
                           newLine();
                           writeln("stage" + id + " = *(this->stage" + id + ");");
-                          writeln("for (int i = get_local_id(0) - 1; i < " +
-                                  "*(this->stage_size_ptr); i += (get_local_size(0) - 1)) {");
+                          writeln("for (int i = get_local_id(0) - 32; i < " +
+                                  "*(this->stage_size_ptr); i += (get_local_size(0) - 32)) {");
                           writeln(classModel.getMangledClassName() +
                                   "__apply$mcVI$sp(&stage" + id + ", i);");
                           writeln("}");
@@ -1374,9 +1363,10 @@ public abstract class KernelWriter extends BlockWriter{
          }
 
          if (_entryPoint.checkIsWorkSharingKernel()) {
-             write("if (get_local_id(0) == 0) {");
+             write("if (get_local_id(0) < 32) {");
              in();
              newLine();
+             writeln("if (get_local_id(0) == 0) {");
          }
 
          if (outParam.getClazz() != null) {
@@ -1471,10 +1461,15 @@ public abstract class KernelWriter extends BlockWriter{
            }
            out();
            newLine();
-           write("}");
+           if (_entryPoint.checkIsWorkSharingKernel()) {
+               writeln("}");
+           } else {
+               write("}");
+           }
          }
 
          if (_entryPoint.checkIsWorkSharingKernel()) {
+             write("}");
              out();
              newLine();
              write("} else {");
@@ -1486,6 +1481,7 @@ public abstract class KernelWriter extends BlockWriter{
              out();
              newLine();
              writeln("}");
+             writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
          }
 
       }

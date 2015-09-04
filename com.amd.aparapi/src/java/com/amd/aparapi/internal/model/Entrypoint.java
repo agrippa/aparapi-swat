@@ -621,9 +621,6 @@ public class Entrypoint implements Cloneable {
    ClassModelMethod resolveCalledMethod(final MethodEntry methodEntry,
            final boolean isSpecial, final boolean isStatic,
            ClassModel classModel, Instruction callInstance) throws AparapiException {
-      // final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
-      // final boolean isSpecial = methodCall instanceof I_INVOKESPECIAL;
-      // final boolean isStatic = methodCall instanceof I_INVOKESTATIC;
 
       int thisClassIndex = classModel.getThisClassConstantPoolIndex();//arf
       boolean isMapped = (thisClassIndex != methodEntry.getClassIndex()) &&
@@ -666,7 +663,6 @@ public class Entrypoint implements Cloneable {
              }
          }
       }
-
 
       Set<String> ignorableClasses = new HashSet<String>();
       ignorableClasses.add("scala/runtime/BoxesRunTime");
@@ -719,38 +715,76 @@ public class Entrypoint implements Cloneable {
        return false;
    }
 
+   // invokeInstruction is the call to CLWrapper.map.
    private ClassModelMethod handleInternalMapCall(
            final I_INVOKEVIRTUAL invokeInstruction,
-           final MethodEntry methodEntry) throws AparapiException {
+           MethodModel currMethodModel,
+           Map<ClassModelMethod, MethodModel> methodMap)
+               throws AparapiException {
        isWorkSharingKernel = true;
 
+       /*
+        * First argument to CLWrapper.map is the dimensionality of this loop
+        * (i.e. # of iterations).
+        */
        Instruction loopDimensionality = invokeInstruction.getArg(0);
+       /*
+        * Expect the second argument to CLWrapper.map to be produced by calling
+        * the constructor of the lambda being passed as the body of the parallel
+        * loop
+        */
        if (!(invokeInstruction.getArg(1) instanceof ConstructorCall)) {
            throw new RuntimeException("Expected lambda as second argument to " +
                    "CLWrapper.map");
        }
        ConstructorCall lambdaConstructor = (ConstructorCall)invokeInstruction
            .getArg(1);
+       /*
+        * Get the actual call to <init> from the composite ConstructorCall
+        * instruction
+        */
        I_INVOKESPECIAL actual = lambdaConstructor.getInvokeSpecial();
-       final MethodEntry parallelMethodEntry = actual.getConstantPoolMethodEntry();
-       final String methodClass =
-           parallelMethodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
-       final String methodName = parallelMethodEntry
-           .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+       final MethodEntry parallelInitMethodEntry = actual.getConstantPoolMethodEntry();
+       final String methodClass = getMethodEntryClass(parallelInitMethodEntry);
+       final String methodName = getMethodEntryName(parallelInitMethodEntry);
 
-       // Add the containing parallel lambda class
+       /*
+        * Add the containing class for the parallel lambda class, which may
+        * contain fields that are referenced from the lambda.
+        */
        addClass(methodModel.getMethod().getClassModel()
                .getClassWeAreModelling().getName(),
                new String[0]);
        // Add the internal parallel lambda
-       final String parallelClassName =
-           methodClass.replace('/', '.');
+       final String parallelClassName = methodClass.replace('/', '.');
        final ClassModel parallelClassModel =
            addClass(parallelClassName, new String[0]);
+       final ClassModelMethod constructorMethodModel = resolveCalledMethod(
+               actual.getConstantPoolMethodEntry(), true, false,
+               parallelClassModel, getCallInstance(actual));
+       if (constructorMethodModel == null) {
+           throw new RuntimeException("constructor of lambda must be non-null");
+       }
+       final MethodModel constructorTarget = new LoadedMethodModel(constructorMethodModel, this);
+       methodMap.put(constructorMethodModel, constructorTarget);
+       currMethodModel.getCalledMethods().add(constructorTarget);
+
        addParallelClassModel(parallelClassModel);
        final ClassModelMethod m = parallelClassModel.getMethod(
                "apply$mcVI$sp", "(I)V");
        return m;
+   }
+
+   private static String getMethodEntryName(MethodEntry methodEntry) {
+       return methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+   }
+
+   private static String getMethodEntryClass(MethodEntry methodEntry) {
+       return methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+   }
+
+   private static String getMethodEntryDesc(MethodEntry methodEntry) {
+       return methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
    }
 
    public Entrypoint(ClassModel _classModel, MethodModel _methodModel,
@@ -767,6 +801,7 @@ public class Entrypoint implements Cloneable {
           hardCodedClassModels = setHardCodedClassModels;
       }
 
+      // Add all hard coded class models to the set of class models
       for (HardCodedClassModel model : hardCodedClassModels) {
           for (String desc : model.getNestedTypeDescs()) {
               // Convert object desc to class name
@@ -778,12 +813,12 @@ public class Entrypoint implements Cloneable {
           }
       }
 
+      // If we're working on a nested class (e.g. a Scala lambda), add its parent
       Class<?> enclosingClass = _classModel.getClassWeAreModelling().getEnclosingClass();
       while (enclosingClass != null) {
           addClass(enclosingClass.getName(), new String[0]);
           enclosingClass = enclosingClass.getEnclosingClass();
       }
-
 
       if (params != null) {
         for (ScalaArrayParameter p : params) {
@@ -793,7 +828,8 @@ public class Entrypoint implements Cloneable {
         }
       }
 
-      final Map<ClassModelMethod, MethodModel> methodMap = new LinkedHashMap<ClassModelMethod, MethodModel>();
+      final Map<ClassModelMethod, MethodModel> methodMap =
+          new LinkedHashMap<ClassModelMethod, MethodModel>();
 
       boolean discovered = true;
 
@@ -814,18 +850,31 @@ public class Entrypoint implements Cloneable {
          }
       }
 
-      // Collect all methods called directly from kernel's run method
+      /*
+       * Collect all methods called directly from kernel's run method. Store a
+       * mapping from each ClassModelMethod to the MethodModel object for each
+       * called method, and add the MethodModel to the list of called methods
+       * for the run method.
+       */
       for (final MethodCall methodCall : methodModel.getMethodCalls()) {
-         ClassModelMethod m = resolveCalledMethod(
-                 methodCall.getConstantPoolMethodEntry(),
-                 methodCall instanceof I_INVOKESPECIAL,
-                 methodCall instanceof I_INVOKESTATIC, classModel,
-                 getCallInstance(methodCall));
+         final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+
+         final ClassModelMethod m;
+         if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
+             m = handleInternalMapCall((I_INVOKEVIRTUAL)methodCall, methodModel,
+                     methodMap);
+         } else {
+             m = resolveCalledMethod(
+                     methodCall.getConstantPoolMethodEntry(),
+                     methodCall instanceof I_INVOKESPECIAL,
+                     methodCall instanceof I_INVOKESTATIC, classModel,
+                     getCallInstance(methodCall));
+         }
          if ((m != null) && !methodMap.keySet().contains(m) && !noCL(m)) {
-            final MethodModel target = new LoadedMethodModel(m, this);
-            methodMap.put(m, target);
-            methodModel.getCalledMethods().add(target);
-            discovered = true;
+             final MethodModel target = new LoadedMethodModel(m, this);
+             methodMap.put(m, target);
+             methodModel.getCalledMethods().add(target);
+             discovered = true;
          }
       }
 
@@ -836,15 +885,12 @@ public class Entrypoint implements Cloneable {
          for (final MethodModel mm : new ArrayList<MethodModel>(methodMap.values())) {
             for (final MethodCall methodCall : mm.getMethodCalls()) {
                final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
-               final String methodName = methodEntry.getNameAndTypeEntry()
-                   .getNameUTF8Entry().getUTF8();
-               final String methodClass = methodEntry.getClassEntry()
-                   .getNameUTF8Entry().getUTF8();
+               final String methodName = getMethodEntryName(methodEntry);
+               final String methodClass = getMethodEntryClass(methodEntry);
 
-               //TODO handle internal maps here
                final ClassModelMethod m;
                if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
-                   m = handleInternalMapCall((I_INVOKEVIRTUAL)methodCall, methodEntry);
+                   m = handleInternalMapCall((I_INVOKEVIRTUAL)methodCall, mm, methodMap);
                } else {
                    m = resolveCalledMethod(methodEntry,
                            methodCall instanceof I_INVOKESPECIAL,
@@ -1442,6 +1488,19 @@ public class Entrypoint implements Cloneable {
       }
 
       if (target == null) {
+          for (Map.Entry<Integer, ClassModel> entry : internalParallelClassModels.entrySet()) {
+              final ClassModel model = entry.getValue();
+              String modelName = model.getClassWeAreModelling().getName();
+              if (modelName.equals(entryClassNameInDotForm)) {
+                  target = model.getMethod(_methodEntry, false);
+                  if (target != null) {
+                      break;
+                  }
+              }
+          }
+      }
+
+      if (target == null) {
           for (ClassModel possibleMatch : matchingClassModels) {
                MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
                    possibleMatch);
@@ -1471,8 +1530,8 @@ public class Entrypoint implements Cloneable {
          if (logger.isLoggable(Level.FINE)) {
             logger.fine("Searching for call target: " + _methodEntry + " in " + m.getName());
          }
-         if (m.getMethod().getName().equals(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8())
-               && m.getMethod().getDescriptor().equals(_methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8())) {
+         if (m.getMethod().getName().equals(getMethodEntryName(_methodEntry))
+               && m.getMethod().getDescriptor().equals(getMethodEntryDesc(_methodEntry))) {
             if (logger.isLoggable(Level.FINE)) {
                logger.fine("Found " + m.getMethod().getClassModel().getClassWeAreModelling().getName() + "."
                      + m.getMethod().getName() + " " + m.getMethod().getDescriptor());
