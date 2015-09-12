@@ -861,12 +861,12 @@ public abstract class KernelWriter extends BlockWriter{
       entryPoint = _entryPoint;
 
       for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
-         // Field field = _entryPoint.getClassModel().getField(f.getName());
          final StringBuilder thisStructLine = new StringBuilder();
          final StringBuilder argLine = new StringBuilder();
          final StringBuilder assignLine = new StringBuilder();
 
          String signature = field.getDescriptor();
+         System.err.println("name=" + field.getName() + " signature=" + signature);
 
          ScalaParameter param = null;
          if (signature.equals("[Lorg/apache/spark/mllib/linalg/DenseVector;")) {

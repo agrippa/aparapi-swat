@@ -1819,7 +1819,8 @@ public abstract class ClassModel {
       }
 
       public Class<?> getDeclaringClass() {
-         final String clazzName = getDescriptor().replaceAll("^L", "").replaceAll("/", ".").replaceAll(";$", "");
+         final String clazzName = getDescriptor().replaceAll("^L", "")
+             .replaceAll("/", ".").replaceAll(";$", "");
          try {
             return (Class.forName(clazzName, true, classModelLoader));
          } catch (final ClassNotFoundException e) {
@@ -1926,7 +1927,8 @@ public abstract class ClassModel {
       }
 
       public String toString() {
-         return getClassModel().getClassWeAreModelling().getName() + "." + getName() + " " + getDescriptor();
+         return getClassModel().getClassWeAreModelling().getName() + "." +
+             getName() + " " + getDescriptor();
       }
 
       public ClassModel getOwnerClassModel() {

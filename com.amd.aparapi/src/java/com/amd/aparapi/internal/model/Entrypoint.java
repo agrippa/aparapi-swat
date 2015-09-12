@@ -60,6 +60,8 @@ import java.util.logging.*;
 
 public class Entrypoint implements Cloneable {
 
+   private static final String[] EMPTY_STRING_ARRAY = new String[0];
+
    private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
    private final List<ClassModel.ClassModelField> referencedClassModelFields =
@@ -131,26 +133,72 @@ public class Entrypoint implements Cloneable {
    private final boolean fallback = false;
 
    public static class DerivedFieldInfo {
-       private String hint;
+       private String baseTypeHint;
+       private String[] templateHint;
        private boolean isBroadcast;
 
-       public DerivedFieldInfo(String hint, boolean isBroadcast) {
-           this.hint = hint;
+       private static String removeSemicolon(String baseTypeHint) {
+           final String converted;
+           if (baseTypeHint != null && baseTypeHint.endsWith(";")) {
+               converted = baseTypeHint.substring(0, baseTypeHint.length() - 1);
+           } else {
+               converted = baseTypeHint;
+           }
+           return converted;
+       }
+
+       public DerivedFieldInfo(String baseTypeHint, String[] templateHint,
+               boolean isBroadcast) {
+           this.baseTypeHint = removeSemicolon(baseTypeHint);
+           this.templateHint = templateHint;
            this.isBroadcast = isBroadcast;
        }
 
        public String getHint() {
-           return hint;
+           // [Lscala/Tuple2<I,org/apache/spark/rdd/cl/tests/PointWithClassifier>
+           if (baseTypeHint == null) {
+               return null;
+           } else {
+               StringBuilder sb = new StringBuilder();
+               sb.append(baseTypeHint);
+               if (templateHint.length == 0) {
+                   return sb.toString();
+               } else {
+                   sb.append("<");
+                   for (int i = 0; i < templateHint.length; i++) {
+                       if (templateHint[i] == null) {
+                           throw new RuntimeException("Expected type template " +
+                                   "hint " + i + " to be non-null");
+                       }
+                       if (i != 0) sb.append(",");
+                       sb.append(templateHint[i]);
+                   }
+                   sb.append(">");
+                   return sb.toString();
+               }
+           }
        }
+
        public boolean checkIsBroadcast() {
            return isBroadcast;
        }
 
-       public void update(String newHint, boolean newIsBroadcast) {
-           if (newHint != null) {
-               hint = newHint;
-           }
+       public void update(String newBaseTypeHint, String[] newTemplateHint,
+               boolean newIsBroadcast) {
+           this.baseTypeHint = removeSemicolon(baseTypeHint);
            assert isBroadcast == newIsBroadcast;
+           assert templateHint.length == newTemplateHint.length;
+           for (int i = 0; i < templateHint.length; i++) {
+               if (templateHint[i] == null) {
+                   if (newTemplateHint[i] != null) {
+                       templateHint[i] = newTemplateHint[i];
+                   }
+               } else { // templateHint[i] != null
+                   if (newTemplateHint[i] != null) {
+                       assert templateHint[i].equals(newTemplateHint[i]);
+                   }
+               }
+           }
        }
    }
    /*
@@ -162,16 +210,20 @@ public class Entrypoint implements Cloneable {
    private final Map<String, DerivedFieldInfo> referencedFieldNames =
        new HashMap<String, DerivedFieldInfo>();
 
-   private void addToReferencedFieldNames(String name, String hint, boolean isBroadcast) {
+   private void addToReferencedFieldNames(String name, String baseTypeHint,
+           String[] templateHint, boolean isBroadcast) {
      if (referencedFieldNames.containsKey(name)) {
-       referencedFieldNames.get(name).update(hint, isBroadcast);
+       referencedFieldNames.get(name).update(baseTypeHint, templateHint,
+               isBroadcast);
      } else {
-       referencedFieldNames.put(name, new DerivedFieldInfo(hint, isBroadcast));
+       referencedFieldNames.put(name, new DerivedFieldInfo(baseTypeHint,
+                   templateHint, isBroadcast));
      }
    }
 
-   private void addToReferencedFieldNames(String name, String hint) {
-       addToReferencedFieldNames(name, hint, false);
+   private void addToReferencedFieldNames(String name, String baseTypeHint,
+           String[] templateHint) {
+       addToReferencedFieldNames(name, baseTypeHint, templateHint, false);
    }
 
    private final Set<String> arrayFieldAssignments = new LinkedHashSet<String>();
@@ -992,7 +1044,8 @@ public class Entrypoint implements Cloneable {
                      final String assignedArrayFieldName = field
                          .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                      arrayFieldAssignments.add(assignedArrayFieldName);
-                     addToReferencedFieldNames(assignedArrayFieldName, null);
+                     addToReferencedFieldNames(assignedArrayFieldName, null,
+                             EMPTY_STRING_ARRAY);
                      arrayFieldArrayLengthUsed.add(assignedArrayFieldName);
 
                   }
@@ -1007,7 +1060,8 @@ public class Entrypoint implements Cloneable {
                      final String accessedArrayFieldName = field
                          .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                      arrayFieldAccesses.add(accessedArrayFieldName);
-                     addToReferencedFieldNames(accessedArrayFieldName, null);
+                     addToReferencedFieldNames(accessedArrayFieldName, null,
+                             EMPTY_STRING_ARRAY);
                      arrayFieldArrayLengthUsed.add(accessedArrayFieldName);
 
                   }
@@ -1041,7 +1095,10 @@ public class Entrypoint implements Cloneable {
                     I_CHECKCAST cast = scalaGet.getCast();
                     signature = cast.getConstantPoolClassEntry()
                         .getNameUTF8Entry().getUTF8().replace('.', '/');
-                    addToReferencedFieldNames(accessedFieldName, "L" + signature);
+                    System.err.println("1 Adding broadcast variable " +
+                            accessedFieldName + " " + signature);
+                    addToReferencedFieldNames(accessedFieldName, signature,
+                            EMPTY_STRING_ARRAY);
                   } else {
                     signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
                     if (signature.equals("Lorg/apache/spark/broadcast/Broadcast;")) {
@@ -1053,12 +1110,54 @@ public class Entrypoint implements Cloneable {
                         if (!(next_next instanceof I_CHECKCAST)) {
                             throw new RuntimeException("Expected I_CHECKCAST, got " + next_next);
                         }
-                        final String typeName = ((I_CHECKCAST)next_next).getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+                        I_CHECKCAST cast = (I_CHECKCAST)next_next;
+                        String typeName = cast.getConstantPoolClassEntry()
+                            .getNameUTF8Entry().getUTF8();
                         if (!typeName.startsWith("[")) {
                             throw new RuntimeException("Broadcast variables " +
                                     "should always have an array type");
                         }
-                        addToReferencedFieldNames(accessedFieldName, typeName, true);
+                        System.err.println("2 Adding broadcast variable " +
+                                accessedFieldName + " \"" + typeName + "\"");
+
+                        String[] templateHint = EMPTY_STRING_ARRAY;
+                        if (typeName.equals("[Lscala/Tuple2;")) {
+                            templateHint = new String[2];
+                            /*
+                             * Look for an expression being applied to this
+                             * broadcast variable (which must be an array of
+                             * tuples) that loads an element from the array and
+                             * then calls a virtual method on it (hopefully
+                             * referencing one of its fields, from which we can
+                             * get the type).
+                             */
+                            if (cast.getParentExpr() instanceof I_AALOAD &&
+                                    cast.getParentExpr().getParentExpr()
+                                    instanceof I_INVOKEVIRTUAL) {
+                                I_INVOKEVIRTUAL accessor = (I_INVOKEVIRTUAL)cast
+                                    .getParentExpr().getParentExpr();
+                                final MethodEntry methodEntry = accessor
+                                    .getConstantPoolMethodEntry();
+                                final String methodName = getMethodEntryName(methodEntry);
+                                final String methodDesc = getMethodEntryDesc(methodEntry);
+                                System.err.println("  " + methodName + " " + methodDesc);
+                                if (!methodName.startsWith("_1") && !methodName.startsWith("_2")) {
+                                    throw new RuntimeException("Expected " +
+                                            "method name starting with _1 or " +
+                                            "_2 but found " + methodName);
+                                }
+                                final String returnDesc = methodDesc.substring(
+                                        methodDesc.lastIndexOf(')') + 1);
+                                if (methodName.startsWith("_1")) {
+                                    templateHint[0] = returnDesc;
+                                } else if (methodName.startsWith("_2")) {
+                                    templateHint[1] = returnDesc;
+                                }
+                                arrayFieldArrayLengthUsed.add(accessedFieldName);
+                            }
+                        }
+                        addToReferencedFieldNames(accessedFieldName, typeName,
+                                templateHint, true);
                         if (typeName.substring(1).startsWith("L")) {
                             // Broadcast variable is an array of objects
                             final String className = (typeName.substring(2,
@@ -1079,7 +1178,10 @@ public class Entrypoint implements Cloneable {
                             addToObjectArrayFieldsClasses(className, arrayFieldModel);
                         }
                     } else {
-                        addToReferencedFieldNames(accessedFieldName, null);
+                        System.err.println("3 Adding broadcast variable " +
+                                accessedFieldName);
+                        addToReferencedFieldNames(accessedFieldName, null,
+                                EMPTY_STRING_ARRAY);
                     }
                   }
 
@@ -1105,7 +1207,8 @@ public class Entrypoint implements Cloneable {
                      if (arrayFieldModel != null) {
                         if (arrayFieldModel instanceof HardCodedClassModel) {
                           addToReferencedFieldNames(accessedFieldName,
-                            "[" + ((HardCodedClassModel)arrayFieldModel).getDescriptor());
+                            "[" + ((HardCodedClassModel)arrayFieldModel)
+                            .getDescriptor(), EMPTY_STRING_ARRAY);
                         }
                         final Class<?> memberClass = arrayFieldModel.getClassWeAreModelling();
                         final int modifiers = memberClass.getModifiers();
@@ -1168,7 +1271,7 @@ public class Entrypoint implements Cloneable {
                   final FieldEntry field = assignment.getConstantPoolFieldEntry();
                   final String assignedFieldName = field.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                   fieldAssignments.add(assignedFieldName);
-                  addToReferencedFieldNames(assignedFieldName, null);
+                  addToReferencedFieldNames(assignedFieldName, null, EMPTY_STRING_ARRAY);
 
                   final String className = (field.getClassEntry().getNameUTF8Entry().getUTF8()).replace('/', '.');
                   // Look for object data member access
@@ -1191,7 +1294,7 @@ public class Entrypoint implements Cloneable {
                   FieldEntry getterField = getSimpleGetterField(invokedMethod);
                   if (getterField != null) {
                      addToReferencedFieldNames(getterField.getNameAndTypeEntry()
-                             .getNameUTF8Entry().getUTF8(), null);
+                             .getNameUTF8Entry().getUTF8(), null, EMPTY_STRING_ARRAY);
                   } else {
                      if (Kernel.isMappedMethod(methodEntry)) { //only do this for intrinsics
 
@@ -1208,7 +1311,8 @@ public class Entrypoint implements Cloneable {
                               final String accessedFieldName = field
                                   .getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
                               arrayFieldAssignments.add(accessedFieldName);
-                              addToReferencedFieldNames(accessedFieldName, null);
+                              addToReferencedFieldNames(accessedFieldName, null,
+                                      EMPTY_STRING_ARRAY);
                            }
                            else {
                               throw new ClassParseException(
@@ -1256,8 +1360,10 @@ public class Entrypoint implements Cloneable {
                ClassModel superModel = memberObjClass.getSuperClazz();
                while (superModel != null) {
                   if (logger.isLoggable(Level.FINEST)) {
-                     logger.finest("adding = " + superModel.getClassWeAreModelling().getName() + " fields into "
-                           + memberObjClass.getClassWeAreModelling().getName());
+                     logger.finest("adding = " +
+                             superModel.getClassWeAreModelling().getName() +
+                             " fields into " +
+                             memberObjClass.getClassWeAreModelling().getName());
                   }
                   memberObjClass.getStructMembers().addAll(superModel.getStructMembers());
                   superModel = superModel.getSuperClazz();
@@ -1275,7 +1381,8 @@ public class Entrypoint implements Cloneable {
                   final int bSize = getSizeOf(bType);
 
                   if (logger.isLoggable(Level.FINEST)) {
-                     logger.finest("aType= " + aType + " aSize= " + aSize + " . . bType= " + bType + " bSize= " + bSize);
+                     logger.finest("aType= " + aType + " aSize= " + aSize +
+                             " . . bType= " + bType + " bSize= " + bSize);
                   }
 
                   // Note this is sorting in reverse order so the biggest is first
@@ -1534,8 +1641,10 @@ public class Entrypoint implements Cloneable {
          if (m.getMethod().getName().equals(getMethodEntryName(_methodEntry))
                && m.getMethod().getDescriptor().equals(getMethodEntryDesc(_methodEntry))) {
             if (logger.isLoggable(Level.FINE)) {
-               logger.fine("Found " + m.getMethod().getClassModel().getClassWeAreModelling().getName() + "."
-                     + m.getMethod().getName() + " " + m.getMethod().getDescriptor());
+               logger.fine("Found " + m.getMethod().getClassModel()
+                       .getClassWeAreModelling().getName() + "." +
+                       m.getMethod().getName() + " " +
+                       m.getMethod().getDescriptor());
             }
             return m;
          }
