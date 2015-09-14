@@ -7,13 +7,11 @@ import com.amd.aparapi.internal.model.ClassModel;
 public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
     public ScalaTuple2ArrayParameter(String fullSig, String name, DIRECTION dir) {
         super(fullSig, name, dir);
-        System.err.println("Creating tuple2 fullSig=" + fullSig);
     }
 
     public ScalaTuple2ArrayParameter(String type, Class<?> clazz, String name,
             DIRECTION dir) {
         super(type, clazz, name, dir);
-        System.err.println("Creating tuple2 type=" + type);
     }
 
     protected String getParameterStringFor(KernelWriter writer, int field) {

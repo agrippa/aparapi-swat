@@ -185,7 +185,7 @@ public class Entrypoint implements Cloneable {
 
        public void update(String newBaseTypeHint, String[] newTemplateHint,
                boolean newIsBroadcast) {
-           this.baseTypeHint = removeSemicolon(baseTypeHint);
+           this.baseTypeHint = removeSemicolon(newBaseTypeHint);
            assert isBroadcast == newIsBroadcast;
            assert templateHint.length == newTemplateHint.length;
            for (int i = 0; i < templateHint.length; i++) {
@@ -421,6 +421,9 @@ public class Entrypoint implements Cloneable {
             } else if (className.equals("org.apache.spark.mllib.linalg.SparseVector")) {
                 memberClassModel = SparseVectorClassModel.create(
                         Integer.parseInt(config.get(sparseVectorTilingConfig)));
+            // } else if (className.equals("scala.Tuple2")) {
+            //     // Can arise if a Tuple2 is used in a broadcasted array
+            //     throw new UnsupportedOperationException();
             } else {
                 // Immediately add this class and all its supers if necessary
                 memberClassModel = ClassModel.createClassModel(memberClass, this,
@@ -817,7 +820,6 @@ public class Entrypoint implements Cloneable {
        if (constructorMethodModel == null) {
            throw new RuntimeException("constructor of lambda must be non-null");
        }
-       System.err.println(actual.getConstantPoolMethodEntry().toString());
        final MethodModel constructorTarget = new LoadedMethodModel(constructorMethodModel, this);
        methodMap.put(constructorMethodModel, constructorTarget);
        currMethodModel.getCalledMethods().add(constructorTarget);
@@ -1095,10 +1097,13 @@ public class Entrypoint implements Cloneable {
                     I_CHECKCAST cast = scalaGet.getCast();
                     signature = cast.getConstantPoolClassEntry()
                         .getNameUTF8Entry().getUTF8().replace('.', '/');
-                    System.err.println("1 Adding broadcast variable " +
-                            accessedFieldName + " " + signature);
-                    addToReferencedFieldNames(accessedFieldName, signature,
-                            EMPTY_STRING_ARRAY);
+                    if (signature.startsWith("[Lscala/Tuple2")) {
+                        String[] newArr = new String[2];
+                        addToReferencedFieldNames(accessedFieldName, signature, newArr);
+                    } else {
+                        addToReferencedFieldNames(accessedFieldName, signature,
+                                EMPTY_STRING_ARRAY);
+                    }
                   } else {
                     signature = field.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
                     if (signature.equals("Lorg/apache/spark/broadcast/Broadcast;")) {
@@ -1117,8 +1122,6 @@ public class Entrypoint implements Cloneable {
                             throw new RuntimeException("Broadcast variables " +
                                     "should always have an array type");
                         }
-                        System.err.println("2 Adding broadcast variable " +
-                                accessedFieldName + " \"" + typeName + "\"");
 
                         String[] templateHint = EMPTY_STRING_ARRAY;
                         if (typeName.equals("[Lscala/Tuple2;")) {
@@ -1140,18 +1143,26 @@ public class Entrypoint implements Cloneable {
                                     .getConstantPoolMethodEntry();
                                 final String methodName = getMethodEntryName(methodEntry);
                                 final String methodDesc = getMethodEntryDesc(methodEntry);
-                                System.err.println("  " + methodName + " " + methodDesc);
                                 if (!methodName.startsWith("_1") && !methodName.startsWith("_2")) {
                                     throw new RuntimeException("Expected " +
                                             "method name starting with _1 or " +
                                             "_2 but found " + methodName);
                                 }
-                                final String returnDesc = methodDesc.substring(
-                                        methodDesc.lastIndexOf(')') + 1);
+
+                                final String realType;
+                                if (accessor.getParentExpr() instanceof I_CHECKCAST) {
+                                    I_CHECKCAST cast_to_real = (I_CHECKCAST)accessor.getParentExpr();
+                                    realType = cast_to_real
+                                        .getConstantPoolClassEntry()
+                                        .getNameUTF8Entry().getUTF8();
+                                } else {
+                                    realType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
+                                }
+
                                 if (methodName.startsWith("_1")) {
-                                    templateHint[0] = returnDesc;
+                                    templateHint[0] = realType;
                                 } else if (methodName.startsWith("_2")) {
-                                    templateHint[1] = returnDesc;
+                                    templateHint[1] = realType;
                                 }
                                 arrayFieldArrayLengthUsed.add(accessedFieldName);
                             }
@@ -1178,8 +1189,6 @@ public class Entrypoint implements Cloneable {
                             addToObjectArrayFieldsClasses(className, arrayFieldModel);
                         }
                     } else {
-                        System.err.println("3 Adding broadcast variable " +
-                                accessedFieldName);
                         addToReferencedFieldNames(accessedFieldName, null,
                                 EMPTY_STRING_ARRAY);
                     }
@@ -1206,9 +1215,16 @@ public class Entrypoint implements Cloneable {
                      final ClassModel arrayFieldModel = getOrUpdateAllClassAccesses(className, matcher);
                      if (arrayFieldModel != null) {
                         if (arrayFieldModel instanceof HardCodedClassModel) {
-                          addToReferencedFieldNames(accessedFieldName,
-                            "[" + ((HardCodedClassModel)arrayFieldModel)
-                            .getDescriptor(), EMPTY_STRING_ARRAY);
+                          HardCodedClassModel arrayModel = (HardCodedClassModel)arrayFieldModel;
+                          final String arrayClassName = arrayModel.getClassWeAreModelling().getName();
+                          final String baseType = "[L" + arrayClassName.replace('.', '/');
+                          final TypeParameters typeParams = arrayModel.getTypeParamDescs();
+                          final String[] paramsArr = new String[typeParams.size()];
+                          for (int i = 0; i < paramsArr.length; i++) {
+                              paramsArr[i] = Tuple2ClassModel.descToName(
+                                      typeParams.get(i)).replace('.', '/');
+                          }
+                          addToReferencedFieldNames(accessedFieldName, baseType, paramsArr);
                         }
                         final Class<?> memberClass = arrayFieldModel.getClassWeAreModelling();
                         final int modifiers = memberClass.getModifiers();
@@ -1260,12 +1276,12 @@ public class Entrypoint implements Cloneable {
                      if (!ignoreScalaRuntimeStuff.contains(className)) {
                        // Look for object data member access
                        if (!className.equals(getClassModel().getClassWeAreModelling().getName())
-                             && (getFieldFromClassHierarchy(getClassModel().getClassWeAreModelling(), accessedFieldName) == null)) {
+                             && (getFieldFromClassHierarchy(getClassModel()
+                             .getClassWeAreModelling(), accessedFieldName) == null)) {
                           updateObjectMemberFieldAccesses(className, field);
                        }
                      }
                   }
-
                } else if (instruction instanceof AssignToField) {
                   final AssignToField assignment = (AssignToField) instruction;
                   final FieldEntry field = assignment.getConstantPoolFieldEntry();
@@ -1396,42 +1412,40 @@ public class Entrypoint implements Cloneable {
                }
             };
 
-            // for (String className : lexicalOrdering) {
-            //    System.err.println("className=" + className);
-               for (final ClassModel c : objectArrayFieldsClasses) {
-                   final ArrayList<FieldNameInfo> fields = c.getStructMembers();
-                   if (fields.size() > 0) {
-                       Collections.sort(fields, fieldSizeComparator);
-                       // Now compute the total size for the struct
-                       int totalSize = 0;
+            for (final ClassModel c : objectArrayFieldsClasses) {
+                final ArrayList<FieldNameInfo> fields = c.getStructMembers();
+                if (fields.size() > 0) {
+                    Collections.sort(fields, fieldSizeComparator);
+                    // Now compute the total size for the struct
+                    int totalSize = 0;
 
-                       if (c instanceof HardCodedClassModel) {
-                           totalSize = ((HardCodedClassModel)c).calcTotalStructSize(this);
-                       } else {
-                          for (final FieldNameInfo f : fields) {
-                             // Record field offset for use while copying
-                             // Get field we will copy out of the kernel member object
-                             final Field rfield = getFieldFromClassHierarchy(c.getClassWeAreModelling(), f.name);
+                    if (c instanceof HardCodedClassModel) {
+                        totalSize = ((HardCodedClassModel)c).calcTotalStructSize(this);
+                    } else {
+                       for (final FieldNameInfo f : fields) {
+                          // Record field offset for use while copying
+                          // Get field we will copy out of the kernel member object
+                          final Field rfield = getFieldFromClassHierarchy(
+                                  c.getClassWeAreModelling(), f.name);
 
-                             long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
-                             final String fieldType = f.desc;
+                          long fieldOffset = UnsafeWrapper.objectFieldOffset(rfield);
+                          final String fieldType = f.desc;
 
-                             c.addStructMemberInfo(fieldOffset,
-                                     fieldType, f.name);
+                          c.addStructMemberInfo(fieldOffset,
+                                  fieldType, f.name);
 
-                             final int fSize = getSizeOf(fieldType);
+                          final int fSize = getSizeOf(fieldType);
 
-                             totalSize += fSize;
-                          }
-                          c.generateStructMemberArray(this);
+                          totalSize += fSize;
                        }
+                       c.generateStructMemberArray(this);
+                    }
 
-                       // compute total size for OpenCL buffer
-                       int totalStructSize = totalSize;
-                       c.setTotalStructSize(totalStructSize);
-                   }
-               }
-            // }
+                    // compute total size for OpenCL buffer
+                    int totalStructSize = totalSize;
+                    c.setTotalStructSize(totalStructSize);
+                }
+            }
 
             for (HardCodedClassModel c : hardCodedClassModels) {
                 final ArrayList<FieldNameInfo> fields = c.getStructMembers();

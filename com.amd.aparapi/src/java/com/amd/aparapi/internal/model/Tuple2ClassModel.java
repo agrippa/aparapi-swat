@@ -63,7 +63,7 @@ public class Tuple2ClassModel extends HardCodedClassModel {
       return paramDescs.get(1);
     }
 
-    private static String descToName(String desc) {
+    public static String descToName(String desc) {
         if (desc.startsWith("L")) {
             return desc.substring(1, desc.length() - 1);
         } else {

@@ -131,7 +131,6 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
                 sb.append(typeParam);
             }
         }
-        // sb.append("*");
         return sb.toString();
     }
 

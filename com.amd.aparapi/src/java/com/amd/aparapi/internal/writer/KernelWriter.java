@@ -866,13 +866,12 @@ public abstract class KernelWriter extends BlockWriter{
          final StringBuilder assignLine = new StringBuilder();
 
          String signature = field.getDescriptor();
-         System.err.println("name=" + field.getName() + " signature=" + signature);
 
          ScalaParameter param = null;
-         if (signature.equals("[Lorg/apache/spark/mllib/linalg/DenseVector;")) {
+         if (signature.equals("[Lorg/apache/spark/mllib/linalg/DenseVector")) {
              param = new ScalaDenseVectorArrayParameter(signature,
                      field.getName(), ScalaParameter.DIRECTION.IN);
-         } else if (signature.equals("[Lorg/apache/spark/mllib/linalg/SparseVector;")) {
+         } else if (signature.equals("[Lorg/apache/spark/mllib/linalg/SparseVector")) {
              param = new ScalaSparseVectorArrayParameter(signature,
                      field.getName(), ScalaParameter.DIRECTION.IN);
          } else if (signature.startsWith("[Lscala/Tuple2")) {
