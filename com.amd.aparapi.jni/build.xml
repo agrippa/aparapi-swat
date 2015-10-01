@@ -537,6 +537,7 @@ First consider editing the properties in build.properties
          <arg value="src/cpp/agent.cpp" />
          <arg value="-L${app.sdk.dir}/lib/${x86_or_x86_64}" />
          <arg value="-L${app.sdk.dir}/${optional.app.sdk.lib.subdir}" />
+         <arg value="-L${app.sdk.dir}/lib" />
          <arg value="-lOpenCL" />
       </exec>
    </target>
