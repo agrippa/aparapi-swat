@@ -2776,8 +2776,8 @@ public abstract class ClassModel {
     * 
     * @return The Method or null if we fail to locate a given method.
     */
-   public ClassModelMethod getMethod(MethodEntry _methodEntry, boolean _isSpecial) {
-      final String entryClassNameInDotForm = _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+   public ClassModelMethod getMethod(MethodEntryInfo _methodEntry, boolean _isSpecial) {
+      final String entryClassNameInDotForm = _methodEntry.getClassName().replace('/', '.');
 
       // Shortcut direct calls to supers to allow "foo() { super.foo() }" type stuff to work
       if (_isSpecial && (superClazz != null) && superClazz.isSuperClass(entryClassNameInDotForm)) {
@@ -2790,14 +2790,11 @@ public abstract class ClassModel {
 
       // If isn't a call to a super and isn't a call to this class, abort early
       String thisClassName = getClassWeAreModelling().getName();
-      String methodClassName =
-        _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace(
-            '/', '.');
+      String methodClassName = _methodEntry.getClassName().replace('/', '.');
       if (!thisClassName.equals(methodClassName)) return null;
 
-      NameAndTypeEntry nameAndTypeEntry = _methodEntry.getNameAndTypeEntry();
-      ClassModelMethod methodOrNull = getMethodOrNull(nameAndTypeEntry.getNameUTF8Entry().getUTF8(), nameAndTypeEntry
-            .getDescriptorUTF8Entry().getUTF8());
+      ClassModelMethod methodOrNull = getMethodOrNull(
+              _methodEntry.getMethodName(), _methodEntry.getMethodSig());
 
       if (methodOrNull == null) {
          return superClazz != null ? superClazz.getMethod(_methodEntry, false) : (null);

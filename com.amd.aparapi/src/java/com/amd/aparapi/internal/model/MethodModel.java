@@ -158,6 +158,60 @@ public abstract class MethodModel {
      public List<Instruction> replace(List<Instruction> insns);
    }
 
+   class Tuple2UnboxToFloatReplace implements BytecodeReplacement {
+       @Override
+       public int size() { return 2; }
+
+       @Override
+       public boolean matches(int i, Instruction insn) {
+           switch (i) {
+               case 0:
+                   return insn instanceof I_INVOKEVIRTUAL;
+               case 1:
+                   return insn instanceof I_INVOKESTATIC;
+               default:
+                   throw new RuntimeException();
+           }
+       }
+
+       @Override
+       public List<Instruction> replace(List<Instruction> insns) {
+           I_INVOKEVIRTUAL virtual = (I_INVOKEVIRTUAL)insns.get(0);
+           I_INVOKESTATIC stat = (I_INVOKESTATIC)insns.get(1);
+
+           MethodEntryInfo static_m = stat.getConstantPoolMethodEntry();
+           String static_className =  static_m.getClassName();
+           String static_methodName = static_m.getMethodName();
+           String static_methodDesc = static_m.getMethodSig();
+
+           final boolean isUnbox = (static_className.equals("scala/runtime/BoxesRunTime") &&
+                   static_methodName.equals("unboxToFloat") &&
+                   static_methodDesc.equals("(Ljava/lang/Object;)F"));
+           if (!isUnbox) {
+               return null;
+           }
+
+           MethodEntryInfo virtual_m = virtual.getConstantPoolMethodEntry();
+           String virtual_className =  virtual_m.getClassName();
+           String virtual_methodName = virtual_m.getMethodName();
+           String virtual_methodDesc = virtual_m.getMethodSig();
+           final boolean isTupleRef = (virtual_className.equals("scala/Tuple2") &&
+                   (virtual_methodName.equals("_1") || virtual_methodName.equals("_2")) &&
+                   virtual_methodDesc.equals("()Ljava/lang/Object;"));
+           if (!isTupleRef) {
+               return null;
+           }
+
+           List<Instruction> replace = new LinkedList<Instruction>();
+           replace.add(new CustomVirtualMethodCall("scala/Tuple2",
+                   virtual_methodName, "()F", virtual.getMethod(),
+                   virtual.getInstanceReference(), virtual.getThisPC(), 1, 1,
+                   virtual_m.getOwnerClassModel(), virtual_m.getArgs(),
+                   virtual_m.getClassIndex()));
+           return replace;
+       }
+   }
+
    class ObjectRefGetReplace implements BytecodeReplacement {
      @Override
      public int size() { return 3; }
@@ -183,11 +237,14 @@ public abstract class MethodModel {
        I_CHECKCAST check = (I_CHECKCAST)insns.get(2);
 
        String firstGetDesc =
-         firstGet.getConstantPoolFieldEntry().getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+         firstGet.getConstantPoolFieldEntry().getNameAndTypeEntry()
+         .getDescriptorUTF8Entry().getUTF8();
        String secondFieldName = 
-         secondGet.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+         secondGet.getConstantPoolFieldEntry().getNameAndTypeEntry()
+         .getNameUTF8Entry().getUTF8();
 
-       if (firstGetDesc.equals("Lscala/runtime/ObjectRef;") && secondFieldName.equals("elem")) {
+       if (firstGetDesc.equals("Lscala/runtime/ObjectRef;") && secondFieldName
+               .equals("elem")) {
          List<Instruction> replace = new LinkedList<Instruction>();
          replace.add(new ScalaGetObjectRefField(MethodModel.this, firstGet, check,
                firstGet.getThisPC()));
@@ -214,11 +271,11 @@ public abstract class MethodModel {
      @Override
      public List<Instruction> replace(List<Instruction> insns) {
        I_INVOKESTATIC invoke = (I_INVOKESTATIC)insns.get(0);
-       MethodEntry m = invoke.getConstantPoolMethodEntry();
+       MethodEntryInfo m = invoke.getConstantPoolMethodEntry();
 
-       String className = m.getClassEntry().getNameUTF8Entry().getUTF8();
-       String methodName = m.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-       String methodDesc = m.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+       String className = m.getClassName();
+       String methodName = m.getMethodName();
+       String methodDesc = m.getMethodSig();
 
        if (className.equals("scala/runtime/IntRef") &&
            methodName.equals("create") &&
@@ -231,7 +288,7 @@ public abstract class MethodModel {
    }
 
    private BytecodeReplacement[] replacers = new BytecodeReplacement[] {
-     new ObjectRefGetReplace(), new IntRefCreateReplace() };
+     new ObjectRefGetReplace(), new IntRefCreateReplace(), new Tuple2UnboxToFloatReplace() };
 
    /**
     * Create a linked list of instructions (from pcHead to pcTail).
@@ -303,7 +360,7 @@ public abstract class MethodModel {
             if (instruction instanceof MethodCall) {
                final MethodCall methodCall = (MethodCall) instruction;
 
-               final MethodReferenceEntry methodReferenceEntry = methodCall.getConstantPoolMethodEntry();
+               final MethodEntryInfo methodReferenceEntry = methodCall.getConstantPoolMethodEntry();
                if (!Kernel.isMappedMethod(methodReferenceEntry)) { // we will allow trusted methods to violate this rule
                   for (final Arg arg : methodReferenceEntry.getArgs()) {
                      if (arg.isArray()) {

@@ -45,6 +45,7 @@ import com.amd.aparapi.internal.model.ValueCache;
 import com.amd.aparapi.internal.model.ValueCache.ThrowingValueComputer;
 import com.amd.aparapi.internal.model.ValueCache.ValueComputer;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.*;
+import com.amd.aparapi.internal.instruction.InstructionSet.MethodEntryInfo;
 import com.amd.aparapi.internal.opencl.*;
 import com.amd.aparapi.internal.util.*;
 
@@ -2108,11 +2109,11 @@ public abstract class Kernel implements Cloneable {
       return mapping;
    }
 
-   public static String getMappedMethodName(MethodReferenceEntry _methodReferenceEntry) {
+   public static String getMappedMethodName(MethodEntryInfo _methodReferenceEntry) {
       if (CacheEnabler.areCachesEnabled())
          return getProperty(mappedMethodNamesCache, _methodReferenceEntry, null);
       String mappedName = null;
-      final String name = _methodReferenceEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+      final String name = _methodReferenceEntry.getMethodName();
       Class<?> currentClass = _methodReferenceEntry.getOwnerClassModel().getClassWeAreModelling();
       while (currentClass != Object.class) {
          for (final Method kernelMethod : currentClass.getDeclaredMethods()) {
@@ -2125,10 +2126,9 @@ public abstract class Kernel implements Cloneable {
                   System.out.println("returnTypeLetter = " + getReturnTypeLetter(kernelMethod));
                   System.out.println("kernelMethod getName = " + kernelMethod.getName());
                   System.out.println("methRefName = " + name + " descriptor = "
-                        + _methodReferenceEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8());
+                        + _methodReferenceEntry.getMethodSig());
                   System.out.println("descToReturnTypeLetter = "
-                        + descriptorToReturnTypeLetter(_methodReferenceEntry.getNameAndTypeEntry().getDescriptorUTF8Entry()
-                              .getUTF8()));
+                        + descriptorToReturnTypeLetter(_methodReferenceEntry.getMethodSig()));
                }
                if (toSignature(_methodReferenceEntry).equals(toSignature(kernelMethod))) {
                   final OpenCLMapping annotation = kernelMethod.getAnnotation(OpenCLMapping.class);
@@ -2148,15 +2148,14 @@ public abstract class Kernel implements Cloneable {
       return (mappedName);
    }
 
-   public static boolean isMappedMethod(MethodReferenceEntry methodReferenceEntry) {
+   public static boolean isMappedMethod(MethodEntryInfo methodReferenceEntry) {
       if (CacheEnabler.areCachesEnabled())
          return getBoolean(mappedMethodFlags, methodReferenceEntry);
       System.err.println("Looking for mapped methods");
       boolean isMapped = false;
       for (final Method kernelMethod : Kernel.class.getDeclaredMethods()) {
          if (kernelMethod.isAnnotationPresent(OpenCLMapping.class)) {
-             System.err.println("Comparing " + methodReferenceEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8() + " " + kernelMethod.getName());
-            if (methodReferenceEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8().equals(kernelMethod.getName())) {
+            if (methodReferenceEntry.getMethodName().equals(kernelMethod.getName())) {
 
                // well they have the same name ;) 
                isMapped = true;
@@ -2166,28 +2165,12 @@ public abstract class Kernel implements Cloneable {
       return (isMapped);
    }
 
-   public static boolean isOpenCLDelegateMethod(MethodReferenceEntry methodReferenceEntry) {
-      if (CacheEnabler.areCachesEnabled())
-         return getBoolean(openCLDelegateMethodFlags, methodReferenceEntry);
-      boolean isMapped = false;
-      for (final Method kernelMethod : Kernel.class.getDeclaredMethods()) {
-         if (kernelMethod.isAnnotationPresent(OpenCLDelegate.class)) {
-            if (methodReferenceEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8().equals(kernelMethod.getName())) {
-
-               // well they have the same name ;) 
-               isMapped = true;
-            }
-         }
-      }
-      return (isMapped);
-   }
-
-   public static boolean usesAtomic32(MethodReferenceEntry methodReferenceEntry) {
+   public static boolean usesAtomic32(MethodEntryInfo methodReferenceEntry) {
       if (CacheEnabler.areCachesEnabled())
          return getProperty(atomic32Cache, methodReferenceEntry, false);
       for (final Method kernelMethod : Kernel.class.getDeclaredMethods()) {
          if (kernelMethod.isAnnotationPresent(OpenCLMapping.class)) {
-            if (methodReferenceEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8().equals(kernelMethod.getName())) {
+            if (methodReferenceEntry.getMethodName().equals(kernelMethod.getName())) {
                final OpenCLMapping annotation = kernelMethod.getAnnotation(OpenCLMapping.class);
                return annotation.atomic32();
             }
@@ -2727,7 +2710,7 @@ public abstract class Kernel implements Cloneable {
    });
 
    private static boolean getBoolean(ValueCache<Class<?>, Map<String, Boolean>, RuntimeException> methodNamesCache,
-         MethodReferenceEntry methodReferenceEntry) {
+         MethodEntryInfo methodReferenceEntry) {
       return getProperty(methodNamesCache, methodReferenceEntry, false);
    }
 
@@ -2763,7 +2746,7 @@ public abstract class Kernel implements Cloneable {
    }
 
    private static <V, T extends Throwable> V getProperty(ValueCache<Class<?>, Map<String, V>, T> cache,
-         MethodReferenceEntry methodReferenceEntry, V defaultValue) throws T {
+         MethodEntryInfo methodReferenceEntry, V defaultValue) throws T {
       Map<String, V> map = cache.computeIfAbsent(methodReferenceEntry.getOwnerClassModel().getClassWeAreModelling());
       String key = toSignature(methodReferenceEntry);
       if (map.containsKey(key))
@@ -2771,9 +2754,8 @@ public abstract class Kernel implements Cloneable {
       return defaultValue;
    }
 
-   private static String toSignature(MethodReferenceEntry methodReferenceEntry) {
-      NameAndTypeEntry nameAndTypeEntry = methodReferenceEntry.getNameAndTypeEntry();
-      return nameAndTypeEntry.getNameUTF8Entry().getUTF8() + nameAndTypeEntry.getDescriptorUTF8Entry().getUTF8();
+   private static String toSignature(MethodEntryInfo methodReferenceEntry) {
+      return methodReferenceEntry.getMethodName() + methodReferenceEntry.getMethodSig();
    }
 
    private static final ValueCache<Class<?>, Map<String, String>, RuntimeException> mappedMethodNamesCache = cacheProperty(new ValueComputer<Class<?>, Map<String, String>>() {

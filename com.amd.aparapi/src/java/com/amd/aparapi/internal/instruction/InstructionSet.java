@@ -41,6 +41,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 
 import com.amd.aparapi.internal.model.MethodModel;
+import com.amd.aparapi.internal.model.ClassModel;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.Entry;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.FieldEntry;
@@ -48,6 +49,7 @@ import com.amd.aparapi.internal.model.ClassModel.ConstantPool.ClassEntry;
 import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodEntry;
 import com.amd.aparapi.internal.model.ClassModel.LocalVariableTableEntry;
 import com.amd.aparapi.internal.model.ClassModel.LocalVariableInfo;
+import com.amd.aparapi.internal.model.ClassModel.ConstantPool.MethodReferenceEntry.Arg;
 import com.amd.aparapi.internal.reader.ByteReader;
 
 public class InstructionSet{
@@ -2027,7 +2029,8 @@ public class InstructionSet{
       }
    }
 
-   public static class ScalaGetObjectRefField extends Instruction implements AccessInstanceField {
+   public static class ScalaGetObjectRefField extends Instruction
+       implements AccessInstanceField {
      private final I_GETFIELD actual;
      private final I_CHECKCAST cast;
 
@@ -2728,8 +2731,10 @@ public class InstructionSet{
          return (index);
       }
 
-      @Override public ConstantPool.MethodEntry getConstantPoolMethodEntry() {
-         return (method.getConstantPool().getMethodEntry(getConstantPoolMethodIndex()));
+      @Override public MethodEntryInfo getConstantPoolMethodEntry() {
+         return new MethodEntryInfoOriginal(
+                 method.getConstantPool().getMethodEntry(
+                     getConstantPoolMethodIndex()));
       }
 
       @Override public Instruction getArg(int _arg) {
@@ -2770,8 +2775,10 @@ public class InstructionSet{
          return (index);
       }
 
-      @Override public ConstantPool.MethodEntry getConstantPoolMethodEntry() {
-         return (method.getConstantPool().getMethodEntry(getConstantPoolMethodIndex()));
+      @Override public MethodEntryInfo getConstantPoolMethodEntry() {
+         return new MethodEntryInfoOriginal(
+                 method.getConstantPool().getMethodEntry(
+                     getConstantPoolMethodIndex()));
       }
 
       @Override public Instruction getArg(int _arg) {
@@ -2793,6 +2800,89 @@ public class InstructionSet{
       }
    }
 
+   public static class CustomVirtualMethodCall extends Instruction
+           implements VirtualMethodCall {
+       final Instruction instanceReference;
+       final int stackConsumeCount;
+       final int stackProduceCount;
+
+       private final String className;
+       private final String methodName;
+       private final String desc;
+
+       private final ClassModel ownerClassModel;
+       private final int classIndex;
+
+       private final Arg[] args;
+
+       /*
+        * instancereference, pc, _methodPoolEntry should be passed from the
+        * INVOKEVIRTUAL we are converting
+        */
+       public CustomVirtualMethodCall(String className, String methodName,
+               String desc, MethodModel _methodPoolEntry,
+               Instruction instanceReference, int pc, int stackConsumeCount,
+               int stackProduceCount, ClassModel ownerClassModel, Arg[] args,
+               int classIndex) {
+           super(_methodPoolEntry, ByteCode.INVOKEVIRTUAL, pc);
+           this.instanceReference = instanceReference;
+           this.stackConsumeCount = stackConsumeCount;
+           this.stackProduceCount = stackProduceCount;
+
+           this.className = className;
+           this.methodName = methodName;
+           this.desc = desc;
+
+           this.ownerClassModel = ownerClassModel;
+           this.classIndex = classIndex;
+
+           this.args = args;
+       }
+
+       @Override
+       public int getStackConsumeCount() {
+           return stackConsumeCount;
+      }
+
+      @Override
+      public int getStackProduceCount() {
+          return stackProduceCount;
+      }
+
+      @Override
+      public Instruction getInstanceReference() {
+          return (getFirstChild());
+          // return instanceReference;
+      }
+
+      @Override
+      public int getConstantPoolMethodIndex() {
+         throw new RuntimeException();
+         // return (index);
+      }
+
+      @Override public MethodEntryInfo getConstantPoolMethodEntry() {
+         return new MethodEntryInfoCustom(className, methodName, desc,
+                 stackProduceCount, stackConsumeCount, ownerClassModel, args, classIndex);
+      }
+
+      @Override public Instruction getArg(int _arg) {
+         Instruction child = getFirstChild();
+         _arg++;
+
+         while (_arg-- != 0) {
+            child = child.getNextExpr();
+         }
+
+         return (child);
+      }
+
+      @Override
+      public String getDescription() {
+          return "customized method call @ " + pc;
+      }
+   }
+
    public static class I_INVOKEVIRTUAL extends Index16 implements VirtualMethodCall{
 
       public I_INVOKEVIRTUAL(MethodModel _methodPoolEntry, ByteReader _byteReader, boolean _wide) {
@@ -2808,8 +2898,8 @@ public class InstructionSet{
          return (index);
       }
 
-      @Override public ConstantPool.MethodEntry getConstantPoolMethodEntry() {
-         return (method.getConstantPool().getMethodEntry(getConstantPoolMethodIndex()));
+      @Override public MethodEntryInfo getConstantPoolMethodEntry() {
+         return new MethodEntryInfoOriginal(method.getConstantPool().getMethodEntry(getConstantPoolMethodIndex()));
       }
 
       @Override public Instruction getArg(int _arg) {
@@ -3731,10 +3821,150 @@ public class InstructionSet{
       }
    }
 
+   public interface MethodEntryInfo {
+       public int getStackProduceCount();
+       public int getStackConsumeCount();
+
+       public String getClassName();
+       public String getMethodName();
+       public String getMethodSig();
+
+       public ClassModel getOwnerClassModel();
+
+       public Arg[] getArgs();
+
+       public int getClassIndex();
+   }
+
+   public static class MethodEntryInfoOriginal implements MethodEntryInfo {
+     private final MethodEntry entry;
+
+     public MethodEntryInfoOriginal(MethodEntry entry) {
+         this.entry = entry;
+     }
+
+     @Override
+     public int getClassIndex() {
+         return entry.getClassIndex();
+     }
+
+     @Override
+     public Arg[] getArgs() {
+         return entry.getArgs();
+     }
+
+     @Override
+     public ClassModel getOwnerClassModel() {
+         return entry.getOwnerClassModel();
+     }
+
+     @Override
+     public String toString() {
+         return entry.toString();
+     }
+
+     @Override
+     public int getStackProduceCount() {
+         return entry.getStackProduceCount();
+     }
+
+     @Override
+     public int getStackConsumeCount() {
+         return entry.getStackConsumeCount();
+     }
+
+     @Override
+     public String getClassName() {
+         return entry.getClassEntry().getNameUTF8Entry().getUTF8();
+     }
+
+     @Override
+     public String getMethodName() {
+         return entry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+     }
+
+     @Override
+     public String getMethodSig() {
+         return entry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+     }
+   }
+
+   public static class MethodEntryInfoCustom implements MethodEntryInfo{
+     private final String className;
+     private final String methodName;
+     private final String desc;
+
+     private final int stackProduceCount;
+     private final int stackConsumeCount;
+
+     private final ClassModel ownerClassModel;
+     private final int classIndex;
+
+     private final Arg[] args;
+
+     public MethodEntryInfoCustom(String className, String methodName,
+             String desc, int stackProduceCount, int stackConsumeCount,
+             ClassModel ownerClassModel, Arg[] args, int classIndex) {
+         this.className = className;
+         this.methodName = methodName;
+         this.desc = desc;
+         this.stackProduceCount = stackProduceCount;
+         this.stackConsumeCount = stackConsumeCount;
+         this.ownerClassModel = ownerClassModel;
+         this.args = args;
+         this.classIndex = classIndex;
+     }
+
+     @Override
+     public int getClassIndex() {
+         return classIndex;
+     }
+
+     @Override
+     public Arg[] getArgs() {
+         return args;
+     }
+
+     @Override
+     public ClassModel getOwnerClassModel() {
+         return ownerClassModel;
+     }
+
+     @Override
+     public String toString() {
+         return className + "." + methodName + desc;
+     }
+
+     @Override
+     public int getStackProduceCount() {
+         return stackProduceCount;
+     }
+
+     @Override
+     public int getStackConsumeCount() {
+         return stackConsumeCount;
+     }
+
+     @Override
+     public String getClassName() {
+         return className;
+     }
+
+     @Override
+     public String getMethodName() {
+         return methodName;
+     }
+
+     @Override
+     public String getMethodSig() {
+         return desc;
+     }
+   }
+
    public interface MethodCall{
       int getConstantPoolMethodIndex();
 
-      MethodEntry getConstantPoolMethodEntry();
+      MethodEntryInfo getConstantPoolMethodEntry();
 
       Instruction getArg(int _arg);
    }

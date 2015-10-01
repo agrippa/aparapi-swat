@@ -296,11 +296,9 @@ public abstract class KernelWriter extends BlockWriter{
    @Override public void writeConstructorCall(ConstructorCall call) throws CodeGenException {
      I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
 
-     MethodEntry constructorEntry = invokeSpecial.getConstantPoolMethodEntry();
-     final String constructorName =
-         constructorEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-     final String constructorSignature =
-        constructorEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+     MethodEntryInfo constructorEntry = invokeSpecial.getConstantPoolMethodEntry();
+     final String constructorName = constructorEntry.getMethodName();
+     final String constructorSignature = constructorEntry.getMethodSig();
 
      MethodModel m = entryPoint.getCallTarget(constructorEntry, true);
      if (m == null) {
@@ -341,18 +339,15 @@ public abstract class KernelWriter extends BlockWriter{
            .getNameUTF8Entry().getUTF8();
    }
 
-   @Override public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
+   @Override public boolean writeMethod(MethodCall _methodCall, MethodEntryInfo _methodEntry) throws CodeGenException {
       final int argc = _methodEntry.getStackConsumeCount();
       final boolean isBroadcasted = _methodEntry.toString().equals(BROADCAST_VALUE_SIG);
       final boolean isDenseVectorCreate = _methodEntry.toString().equals(DENSE_VECTOR_CREATE_SIG);
       final boolean isSparseVectorCreate = _methodEntry.toString().equals(SPARSE_VECTOR_CREATE_SIG);
 
-      final String methodName =
-          _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-      final String methodSignature =
-          _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-      final String methodClass =
-          _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+      final String methodName = _methodEntry.getMethodName();
+      final String methodSignature = _methodEntry.getMethodSig();
+      final String methodClass = _methodEntry.getClassName();
 
       if (methodName.equals("<init>")) {
           if (!_methodEntry.toString().equals("java/lang/Object.<init>()V") &&
@@ -368,6 +363,7 @@ public abstract class KernelWriter extends BlockWriter{
           final Set<String> ignorableMethods = new HashSet<String>();
           ignorableMethods.add("boxToInteger");
           ignorableMethods.add("boxToFloat");
+          ignorableMethods.add("boxToDouble");
           ignorableMethods.add("unboxToFloat");
 
           if (ignorableMethods.contains(methodName)) {
@@ -449,7 +445,7 @@ public abstract class KernelWriter extends BlockWriter{
                }
                if (refAccess instanceof I_INVOKEVIRTUAL) {
                    I_INVOKEVIRTUAL invoke = (I_INVOKEVIRTUAL)refAccess;
-                   MethodEntry callee = invoke.getConstantPoolMethodEntry();
+                   MethodEntryInfo callee = invoke.getConstantPoolMethodEntry();
                    if (callee.toString().equals(BROADCAST_VALUE_SIG)) {
                        refAccess = refAccess.getPrevPC();
                    }
@@ -469,13 +465,13 @@ public abstract class KernelWriter extends BlockWriter{
                return false;
              } else {
                  throw new RuntimeException("Unhandled target \"" +
-                         target.toString() + "\" for getter " +
+                         target + "\" for getter " +
                          getterFieldName);
              }
            }
          }
          boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
-               .contains(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+               .contains(_methodEntry.getMethodName());
          if (noCL) {
             return false;
          }
@@ -507,7 +503,7 @@ public abstract class KernelWriter extends BlockWriter{
               }
               final Instruction itersArg = _methodCall.getArg(0);
               final ConstructorCall constructor = (ConstructorCall)_methodCall.getArg(1);
-              final MethodEntry constructorEntry = constructor.getInvokeSpecial()
+              final MethodEntryInfo constructorEntry = constructor.getInvokeSpecial()
                   .getConstantPoolMethodEntry();
               MethodModel constructorModel = entryPoint.getCallTarget(constructorEntry, true);
               final ClassModel classModel = constructorModel.getMethod().getClassModel();
@@ -646,7 +642,7 @@ public abstract class KernelWriter extends BlockWriter{
                              throw new RuntimeException("Unexpected prev = " + prev);
                          }
                          I_INVOKEVIRTUAL valueInvoke = (I_INVOKEVIRTUAL)prev;
-                         MethodEntry callee = valueInvoke.getConstantPoolMethodEntry();
+                         MethodEntryInfo callee = valueInvoke.getConstantPoolMethodEntry();
                          if (!callee.toString().equals(BROADCAST_VALUE_SIG)) {
                              throw new RuntimeException("Expected " +
                                      "Broadcast.value, got " +

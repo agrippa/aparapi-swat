@@ -686,7 +686,7 @@ public abstract class BlockWriter{
       } else if (_instruction instanceof MethodCall) {
          final MethodCall methodCall = (MethodCall) _instruction;
 
-         final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+         final MethodEntryInfo methodEntry = methodCall.getConstantPoolMethodEntry();
 
          writeCheck = writeMethod(methodCall, methodEntry);
       } else if (_instruction.getByteCode().equals(ByteCode.CLONE)) {
@@ -851,9 +851,9 @@ public abstract class BlockWriter{
       return (AccessInstanceField) load;
    }
 
-   public boolean writeMethod(MethodCall _methodCall, MethodEntry _methodEntry) throws CodeGenException {
+   public boolean writeMethod(MethodCall _methodCall, MethodEntryInfo _methodEntry) throws CodeGenException {
       boolean noCL = _methodEntry.getOwnerClassModel().getNoCLMethods()
-            .contains(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+            .contains(_methodEntry.getMethodName());
       if (noCL) {
          return false;
       }
@@ -868,7 +868,7 @@ public abstract class BlockWriter{
          }
       }
       final int argc = _methodEntry.getStackConsumeCount();
-      write(_methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+      write(_methodEntry.getMethodName());
       write("(");
 
       for (int arg = 0; arg < argc; arg++) {

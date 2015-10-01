@@ -125,11 +125,24 @@ public class Tuple2ClassModel extends HardCodedClassModel {
         };
 
         List<HardCodedMethodModel> methods = new ArrayList<HardCodedMethodModel>();
-        methods.add(new HardCodedMethodModel("_1$mcI$sp", "()" + firstTypeDesc,
+        methods.add(new HardCodedMethodModel("_1$mcI$sp", "()I",
               null, true, "_1"));
-        methods.add(new HardCodedMethodModel("_2", "()" + secondTypeDesc, null,
+        methods.add(new HardCodedMethodModel("_2$mcI$sp", "()I", null,
               true, "_2"));
-        methods.add(new HardCodedMethodModel("_2$mcI$sp", "()" + secondTypeDesc, null,
+
+        methods.add(new HardCodedMethodModel("_1$mcD$sp", "()D",
+              null, true, "_1"));
+        methods.add(new HardCodedMethodModel("_2$mcD$sp", "()D", null,
+              true, "_2"));
+
+        methods.add(new HardCodedMethodModel("_1$mcF$sp", "()F",
+              null, true, "_1"));
+        methods.add(new HardCodedMethodModel("_2$mcF$sp", "()F", null,
+              true, "_2"));
+
+        methods.add(new HardCodedMethodModel("_1", "()" + firstTypeDesc, null,
+              true, "_1"));
+        methods.add(new HardCodedMethodModel("_2", "()" + secondTypeDesc, null,
               true, "_2"));
         if (isConstructable) {
             methods.add(new HardCodedMethodModel("<init>", "(" + firstTypeDesc +

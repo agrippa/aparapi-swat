@@ -365,9 +365,9 @@ public class InstructionHelper{
                label.append(branch.getTarget().getThisPC());
             } else if (instruction instanceof MethodCall) {
                final MethodCall methodCall = (MethodCall) instruction;
-               label.append(methodCall.getConstantPoolMethodEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+               label.append(methodCall.getConstantPoolMethodEntry().getMethodName());
                label.append(" ");
-               label.append(methodCall.getConstantPoolMethodEntry().getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8());
+               label.append(methodCall.getConstantPoolMethodEntry().getMethodSig());
             } else if (instruction instanceof OperatorInstruction) {
                final OperatorInstruction operatorInstruction = (OperatorInstruction) instruction;
                label.append(operatorInstruction.getOperator().getText() + "(" + byteCodeName + ")");

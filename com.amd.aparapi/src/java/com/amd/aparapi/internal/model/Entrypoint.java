@@ -468,10 +468,9 @@ public class Entrypoint implements Cloneable {
    }
 
    public ClassModelMethod resolveAccessorCandidate(
-           final Instruction callInstance, final MethodEntry _methodEntry)
+           final Instruction callInstance, final MethodEntryInfo _methodEntry)
            throws AparapiException {
-      final String methodsActualClassName = (_methodEntry.getClassEntry()
-              .getNameUTF8Entry().getUTF8()).replace('/', '.');
+      final String methodsActualClassName = _methodEntry.getClassName().replace('/', '.');
 
       if (callInstance != null) {
          if (callInstance instanceof AccessArrayElement) {
@@ -485,10 +484,8 @@ public class Entrypoint implements Cloneable {
                           methodsActualClassName);
                }
 
-               final String methodName =
-                 _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-               final String methodDesc =
-                 _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+               final String methodName = _methodEntry.getMethodName();
+               final String methodDesc = _methodEntry.getMethodSig();
                final String returnType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
                HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
                    @Override
@@ -673,7 +670,7 @@ public class Entrypoint implements Cloneable {
    /*
     * Find a suitable call target in the kernel class, supers, object members or static calls
     */
-   ClassModelMethod resolveCalledMethod(final MethodEntry methodEntry,
+   ClassModelMethod resolveCalledMethod(final MethodEntryInfo methodEntry,
            final boolean isSpecial, final boolean isStatic,
            ClassModel classModel, Instruction callInstance) throws AparapiException {
 
@@ -699,8 +696,7 @@ public class Entrypoint implements Cloneable {
 
       // Look for a intra-object call in a object member
       if (m == null && !isMapped) {
-         String targetMethodOwner = methodEntry.getClassEntry()
-             .getNameUTF8Entry().getUTF8().replace('/', '.');
+         String targetMethodOwner = methodEntry.getClassName().replace('/', '.');
          final Set<ClassModel> possibleMatches = new HashSet<ClassModel>();
 
          for (ClassModel c : allFieldsClasses) {
@@ -726,11 +722,9 @@ public class Entrypoint implements Cloneable {
       ignorableClasses.add("scala/runtime/DoubleRef");
       // Look for static call to some other class
       if ((m == null) && !isMapped && isStatic &&
-          !ignorableClasses.contains(methodEntry.getClassEntry()
-              .getNameUTF8Entry().getUTF8())) {
+          !ignorableClasses.contains(methodEntry.getClassName())) {
 
-         String otherClassName =
-             methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/', '.');
+         String otherClassName = methodEntry.getClassName().replace('/', '.');
          HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
              @Override
              public void checkPreconditions(List<HardCodedClassModel> classModels) { }
@@ -755,11 +749,10 @@ public class Entrypoint implements Cloneable {
 
    public static boolean isSparseVectorIndicesOrValues(Instruction insn) {
        if (insn instanceof I_INVOKEVIRTUAL) {
-           final MethodEntry methodEntry = ((I_INVOKEVIRTUAL)insn).getConstantPoolMethodEntry();
-           final String methodName = methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
-           final String methodDesc =
-             methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
-           final String owner = methodEntry.getClassEntry().getNameUTF8Entry().getUTF8();
+           final MethodEntryInfo methodEntry = ((I_INVOKEVIRTUAL)insn).getConstantPoolMethodEntry();
+           final String methodName = methodEntry.getMethodName();
+           final String methodDesc = methodEntry.getMethodSig();
+           final String owner = methodEntry.getClassName();
            if (owner.equals("org/apache/spark/mllib/linalg/SparseVector")) {
                if ((methodName.equals("indices") && methodDesc.equals("()[I")) ||
                        (methodName.equals("values") && methodDesc.equals("()[D"))) {
@@ -799,9 +792,9 @@ public class Entrypoint implements Cloneable {
         * instruction
         */
        I_INVOKESPECIAL actual = lambdaConstructor.getInvokeSpecial();
-       final MethodEntry parallelInitMethodEntry = actual.getConstantPoolMethodEntry();
-       final String methodClass = getMethodEntryClass(parallelInitMethodEntry);
-       final String methodName = getMethodEntryName(parallelInitMethodEntry);
+       final MethodEntryInfo parallelInitMethodEntry = actual.getConstantPoolMethodEntry();
+       final String methodClass = parallelInitMethodEntry.getClassName();
+       final String methodName = parallelInitMethodEntry.getMethodName();
 
        /*
         * Add the containing class for the parallel lambda class, which may
@@ -912,7 +905,7 @@ public class Entrypoint implements Cloneable {
        * for the run method.
        */
       for (final MethodCall methodCall : methodModel.getMethodCalls()) {
-         final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
+         final MethodEntryInfo methodEntry = methodCall.getConstantPoolMethodEntry();
 
          final ClassModelMethod m;
          if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
@@ -939,9 +932,9 @@ public class Entrypoint implements Cloneable {
          discovered = false;
          for (final MethodModel mm : new ArrayList<MethodModel>(methodMap.values())) {
             for (final MethodCall methodCall : mm.getMethodCalls()) {
-               final MethodEntry methodEntry = methodCall.getConstantPoolMethodEntry();
-               final String methodName = getMethodEntryName(methodEntry);
-               final String methodClass = getMethodEntryClass(methodEntry);
+               final MethodEntryInfo methodEntry = methodCall.getConstantPoolMethodEntry();
+               final String methodName = methodEntry.getMethodName();
+               final String methodClass = methodEntry.getClassName();
 
                final ClassModelMethod m;
                if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
@@ -1139,10 +1132,10 @@ public class Entrypoint implements Cloneable {
                                     instanceof I_INVOKEVIRTUAL) {
                                 I_INVOKEVIRTUAL accessor = (I_INVOKEVIRTUAL)cast
                                     .getParentExpr().getParentExpr();
-                                final MethodEntry methodEntry = accessor
+                                final MethodEntryInfo methodEntry = accessor
                                     .getConstantPoolMethodEntry();
-                                final String methodName = getMethodEntryName(methodEntry);
-                                final String methodDesc = getMethodEntryDesc(methodEntry);
+                                final String methodName = methodEntry.getMethodName();
+                                final String methodDesc = methodEntry.getMethodSig();
                                 if (!methodName.startsWith("_1") && !methodName.startsWith("_2")) {
                                     throw new RuntimeException("Expected " +
                                             "method name starting with _1 or " +
@@ -1304,7 +1297,7 @@ public class Entrypoint implements Cloneable {
 
                } else if (instruction instanceof I_INVOKEVIRTUAL) {
                   final I_INVOKEVIRTUAL invokeInstruction = (I_INVOKEVIRTUAL) instruction;
-                  final MethodEntry methodEntry = invokeInstruction
+                  final MethodEntryInfo methodEntry = invokeInstruction
                       .getConstantPoolMethodEntry();
                   MethodModel invokedMethod = invokeInstruction.getMethod();
                   FieldEntry getterField = getSimpleGetterField(invokedMethod);
@@ -1548,11 +1541,11 @@ public class Entrypoint implements Cloneable {
       return (classModel);
    }
 
-   private MethodModel lookForHardCodedMethod(MethodEntry _methodEntry, ClassModel classModel) {
+   private MethodModel lookForHardCodedMethod(MethodEntryInfo _methodEntry,
+           ClassModel classModel) {
        try {
            MethodModel hardCoded = classModel.checkForHardCodedMethods(
-               _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8(),
-               _methodEntry.getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8());
+                   _methodEntry.getMethodName(), _methodEntry.getMethodSig());
            if (hardCoded != null) {
                return hardCoded;
            }
@@ -1567,20 +1560,19 @@ public class Entrypoint implements Cloneable {
     * @param _methodEntry MethodEntry for the desired target
     * @return the fully qualified name such as "com_amd_javalabs_opencl_demo_PaternityTest$SimpleKernel__actuallyDoIt"
     */
-   public MethodModel getCallTarget(MethodEntry _methodEntry, boolean _isSpecial) {
+   public MethodModel getCallTarget(MethodEntryInfo _methodEntry, boolean _isSpecial) {
 
-      final String methodName = _methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
+      final String methodName = _methodEntry.getMethodName();
       ClassModelMethod target = getClassModel().getMethod(_methodEntry, _isSpecial);
       boolean isMapped = Kernel.isMappedMethod(_methodEntry);
 
       if (logger.isLoggable(Level.FINE) && (target == null)) {
-         logger.fine("Did not find call target: " + _methodEntry + " in " +
+         logger.fine("Did not find call target: " + _methodEntry.toString() + " in " +
              getClassModel().getClassWeAreModelling().getName() + " isMapped=" +
              isMapped);
       }
 
-      String entryClassNameInDotForm =
-          _methodEntry.getClassEntry().getNameUTF8Entry().getUTF8().replace('/',
+      String entryClassNameInDotForm = _methodEntry.getClassName().replace('/',
               '.');
       if (entryClassNameInDotForm.startsWith("scala.Tuple2")) {
           entryClassNameInDotForm = "scala.Tuple2";
@@ -1650,10 +1642,11 @@ public class Entrypoint implements Cloneable {
       // Search for static calls to other classes
       for (MethodModel m : calledMethods) {
          if (logger.isLoggable(Level.FINE)) {
-            logger.fine("Searching for call target: " + _methodEntry + " in " + m.getName());
+            logger.fine("Searching for call target: " +
+                    _methodEntry.toString() + " in " + m.getName());
          }
-         if (m.getMethod().getName().equals(getMethodEntryName(_methodEntry))
-               && m.getMethod().getDescriptor().equals(getMethodEntryDesc(_methodEntry))) {
+         if (m.getMethod().getName().equals(_methodEntry.getMethodName())
+               && m.getMethod().getDescriptor().equals(_methodEntry.getMethodSig())) {
             if (logger.isLoggable(Level.FINE)) {
                logger.fine("Found " + m.getMethod().getClassModel()
                        .getClassWeAreModelling().getName() + "." +
