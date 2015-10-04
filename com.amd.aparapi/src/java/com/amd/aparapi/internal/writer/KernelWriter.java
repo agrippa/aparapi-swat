@@ -564,6 +564,7 @@ public abstract class KernelWriter extends BlockWriter{
                 writeInstruction(_methodCall.getArg(0));
                 write("; " + allocVarName + "->size = *(((__global long *)" +
                         allocVarName + "->values) - 1); ");
+                write("; " + allocVarName + "->tiling = 1; ");
                 write(allocVarName);
                 write("; })");
             } else if (isSparseVectorCreate) {
@@ -612,7 +613,7 @@ public abstract class KernelWriter extends BlockWriter{
 
                  if (i instanceof I_ALOAD_0) {
                      write("this");
-                 } else if (i instanceof LocalVariableConstIndexLoad || i instanceof I_INVOKEVIRTUAL) {
+                 } else if (i instanceof AccessLocalVariable || i instanceof I_INVOKEVIRTUAL) {
                      writeInstruction(i);
                  } else if (i instanceof AccessArrayElement) {
                      final AccessArrayElement arrayAccess = (AccessArrayElement)i;

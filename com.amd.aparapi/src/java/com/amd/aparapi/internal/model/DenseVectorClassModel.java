@@ -35,7 +35,7 @@ public class DenseVectorClassModel extends HardCodedClassModel {
         return (other instanceof DenseVectorClassModel);
     }
 
-    public static DenseVectorClassModel create(final int tiling) {
+    public static DenseVectorClassModel create() {
         List<HardCodedMethodModel> methods = new ArrayList<HardCodedMethodModel>();
 
         MethodDefGenerator sizeGen = new MethodDefGenerator<DenseVectorClassModel>() {
@@ -64,7 +64,7 @@ public class DenseVectorClassModel extends HardCodedClassModel {
                 StringBuilder sb = new StringBuilder();
                 sb.append("static double " + method.getName() + "(__global " +
                         owner + " *this, int index) {\n");
-                sb.append("    return (this->values)[" + tiling + " * index];\n");
+                sb.append("    return (this->values)[this->tiling * index];\n");
                 sb.append("}");
                 return sb.toString();
             }
@@ -74,6 +74,7 @@ public class DenseVectorClassModel extends HardCodedClassModel {
         List<AllFieldInfo> fields = new ArrayList<AllFieldInfo>(2);
         fields.add(new AllFieldInfo("values", "[D", "double*", -1));
         fields.add(new AllFieldInfo("size", "I", "int", -1));
+        fields.add(new AllFieldInfo("tiling", "I", "int", -1));
 
         return new DenseVectorClassModel(methods, fields);
     }
@@ -95,10 +96,13 @@ public class DenseVectorClassModel extends HardCodedClassModel {
 
    @Override
    public int calcTotalStructSize(Entrypoint entryPoint) {
-       // Size of the pointer to values + size of the integer size
+       /*
+        * Size of the pointer to values + size of the integer size + size of the
+        * integer tiling
+        */
        final int pointerSize = Integer.parseInt(entryPoint.getConfig().get(
                    Entrypoint.clDevicePointerSize));
-       return (pointerSize + 4);
+       return (pointerSize + 4 + 4);
    }
 
    @Override

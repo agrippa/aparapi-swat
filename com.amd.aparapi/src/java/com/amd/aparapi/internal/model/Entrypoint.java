@@ -111,7 +111,7 @@ public class Entrypoint implements Cloneable {
    }
 
    public static final String sparseVectorTilingConfig = "sparse_vector.tiling";
-   public static final String denseVectorTilingConfig = "dense_vector.tiling";
+   // public static final String denseVectorTilingConfig = "dense_vector.tiling";
    public static final String clDevicePointerSize = "device.pointer_size";
    private final Map<String, String> config;
    public Map<String, String> getConfig() { return config; }
@@ -416,8 +416,8 @@ public class Entrypoint implements Cloneable {
             final Class<?> memberClass = Class.forName(className);
 
             if (className.equals("org.apache.spark.mllib.linalg.DenseVector")) {
-                memberClassModel = DenseVectorClassModel.create(
-                        Integer.parseInt(config.get(denseVectorTilingConfig)));
+                memberClassModel = DenseVectorClassModel.create();
+                        // Integer.parseInt(config.get(denseVectorTilingConfig)));
             } else if (className.equals("org.apache.spark.mllib.linalg.SparseVector")) {
                 memberClassModel = SparseVectorClassModel.create(
                         Integer.parseInt(config.get(sparseVectorTilingConfig)));
