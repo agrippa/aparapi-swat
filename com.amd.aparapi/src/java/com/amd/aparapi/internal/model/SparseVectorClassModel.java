@@ -35,7 +35,7 @@ public class SparseVectorClassModel extends HardCodedClassModel {
         return (other instanceof SparseVectorClassModel);
     }
 
-    public static SparseVectorClassModel create(final int tiling) {
+    public static SparseVectorClassModel create() {
         List<HardCodedMethodModel> methods = new ArrayList<HardCodedMethodModel>();
 
         MethodDefGenerator sizeGen = new MethodDefGenerator<SparseVectorClassModel>() {
@@ -91,6 +91,7 @@ public class SparseVectorClassModel extends HardCodedClassModel {
         fields.add(new AllFieldInfo("indices", "[I", "int*", -1));
         fields.add(new AllFieldInfo("values", "[D", "double*", -1));
         fields.add(new AllFieldInfo("size", "I", "int", -1));
+        fields.add(new AllFieldInfo("tiling", "I", "int", -1));
 
         return new SparseVectorClassModel(methods, fields);
     }
@@ -114,11 +115,11 @@ public class SparseVectorClassModel extends HardCodedClassModel {
    public int calcTotalStructSize(Entrypoint entryPoint) {
        /*
         * Size of the pointer to values + size of the pointer to indices + size
-        * of the integer size
+        * of the integer size + size of the integer tiling
         */
        final int pointerSize = Integer.parseInt(entryPoint.getConfig().get(
                    Entrypoint.clDevicePointerSize));
-       return (pointerSize + pointerSize + 4);
+       return (pointerSize + pointerSize + 4 + 4);
    }
 
    @Override

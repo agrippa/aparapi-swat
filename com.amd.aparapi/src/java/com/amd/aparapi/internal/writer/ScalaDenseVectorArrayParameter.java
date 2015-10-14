@@ -22,9 +22,9 @@ public class ScalaDenseVectorArrayParameter extends ScalaArrayParameter {
 
     @Override
     public String getInputParameterString(KernelWriter writer) {
-        return "__global org_apache_spark_mllib_linalg_DenseVector* " + name +
-            ", __global double *" + name + "_values, __global int *" +
-            name + "_sizes, __global int *" + name + "_offsets, int n" + name +
+        return "__global org_apache_spark_mllib_linalg_DenseVector * restrict " + name +
+            ", __global double * restrict " + name + "_values, __global int * restrict " +
+            name + "_sizes, __global int * restrict " + name + "_offsets, int n" + name +
             ", int " + name + "_tiling";
     }
 
@@ -34,7 +34,7 @@ public class ScalaDenseVectorArrayParameter extends ScalaArrayParameter {
             throw new RuntimeException();
         }
 
-        return "__global " + type.replace('.', '_') + "* " + name;
+        return "__global " + type.replace('.', '_') + "* restrict " + name;
     }
 
     @Override

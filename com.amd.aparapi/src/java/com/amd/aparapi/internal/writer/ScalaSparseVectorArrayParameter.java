@@ -22,10 +22,11 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
 
    @Override
    public String getInputParameterString(KernelWriter writer) {
-       return "__global org_apache_spark_mllib_linalg_SparseVector* " + name +
-           ", __global int *" + name + "_indices, __global double *" +
-           name + "_values, __global int *" + name +
-           "_sizes, __global int *" + name + "_offsets, int n" + name;
+       return "__global org_apache_spark_mllib_linalg_SparseVector * restrict " + name +
+           ", __global int * restrict " + name + "_indices, __global double * restrict " +
+           name + "_values, __global int * restrict " + name +
+           "_sizes, __global int * restrict " + name + "_offsets, int n" + name +
+           ", int " + name + "_tiling";
    }
 
    @Override
@@ -34,7 +35,7 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
            throw new RuntimeException();
        }
 
-       return "__global " + type.replace('.', '_') + "* " + name;
+       return "__global " + type.replace('.', '_') + "* restrict " + name;
    }
 
    @Override
@@ -50,6 +51,7 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
        builder.append("my_" + name + "->indices = " + src + "_indices + " +
                src + "_offsets[i]; ");
        builder.append("my_" + name + "->size = " + src + "_sizes[i];");
+       builder.append("my_" + name + "->tiling = " + src + "_tiling;");
        return builder.toString();
    }
 
@@ -63,6 +65,7 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
        builder.append("      (this->" + name + ")[j].indices = " + name +
                "_indices + " + name + "_offsets[j];\n");
        builder.append("      (this->" + name + ")[j].size = " + name + "_sizes[j];\n");
+       builder.append("      (this->" + name + ")[j].tiling = " + name + "_tiling;\n");
        builder.append("   }\n");
        return builder.toString();
    }

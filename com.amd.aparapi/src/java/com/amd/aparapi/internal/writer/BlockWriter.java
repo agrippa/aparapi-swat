@@ -494,8 +494,9 @@ public abstract class BlockWriter{
          writeInstruction(arrayRef);
          write("[");
          if (isSparseVectorAccess) {
-             int tiling = Integer.parseInt(config.get(Entrypoint.sparseVectorTilingConfig));
-             write(tiling + " * (");
+             Instruction target = ((I_INVOKEVIRTUAL)arrayRef).getInstanceReference();
+             writeInstruction(target);
+             write("->tiling * (");
          }
          writeInstruction(arrayLoadInstruction.getArrayIndex());
          if (isSparseVectorAccess) {

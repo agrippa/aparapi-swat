@@ -576,6 +576,7 @@ public abstract class KernelWriter extends BlockWriter{
                 write("({ " + allocVarName + "->size = ");
                 writeInstruction(_methodCall.getArg(0));
                 write("; ");
+                write("; " + allocVarName + "->tiling = 1; ");
                 write(allocVarName + "->indices = ");
                 writeInstruction(_methodCall.getArg(1));
                 write("; ");
@@ -838,6 +839,7 @@ public abstract class KernelWriter extends BlockWriter{
        writeln(varname + "->values = " +
                "((__global char *)" + varname + "->values) - " +
                "((__global char *)this->heap);");
+       writeln(varname + "->tiling = iter;");
    }
 
    private void writeSparseVectorValueUpdate(String varname) {
@@ -847,6 +849,7 @@ public abstract class KernelWriter extends BlockWriter{
        writeln(varname + "->indices = " +
                "((__global char *)" + varname + "->indices) - " +
                "((__global char *)this->heap);");
+       writeln(varname + "->tiling = iter;");
    }
 
    @Override public void write(Entrypoint _entryPoint,
@@ -919,11 +922,10 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       if (_entryPoint.requiresHeap()) {
-        argLines.add("__global void *heap");
-        argLines.add("__global uint *free_index");
+        argLines.add("__global void * restrict heap");
+        argLines.add("__global uint * restrict free_index");
         argLines.add("unsigned int heap_size");
-        argLines.add("__global int *processing_succeeded");
-        argLines.add("__global int *any_failed");
+        argLines.add("__global int * restrict processing_succeeded");
 
         assigns.add("this->heap = heap");
         assigns.add("this->free_index = free_index");
@@ -1291,7 +1293,7 @@ public abstract class KernelWriter extends BlockWriter{
            write(", "); write(line);
          }
 
-         write(", int N");
+         write(", int N, int iter");
       }
       write(") {");
       out();
@@ -1339,12 +1341,9 @@ public abstract class KernelWriter extends BlockWriter{
       newLine();
       {
          if (_entryPoint.requiresHeap()) {
-           write("if (processing_succeeded[i]) continue;");
-           newLine();
-           newLine();
-
-           write("this->alloc_failed = 0;");
-           newLine();
+           writeln("if (iter == 0) processing_succeeded[i] = 0;");
+           writeln("else if (processing_succeeded[i]) continue;");
+           writeln("this->alloc_failed = 0;");
          }
 
          for (ScalaArrayParameter p : params) {
@@ -1392,17 +1391,7 @@ public abstract class KernelWriter extends BlockWriter{
          }
 
          if (_entryPoint.requiresHeap()) {
-           write("if (this->alloc_failed) {");
-           in();
-           newLine();
-           {
-             write("processing_succeeded[i] = 0;");
-             newLine();
-             write("*any_failed = 1;");
-           }
-           out();
-           newLine();
-           write("} else {");
+           write("if (!this->alloc_failed) {");
            in();
            newLine();
            {

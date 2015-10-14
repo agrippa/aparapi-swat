@@ -24,7 +24,7 @@ public class ScalaPrimitiveOrObjectArrayParameter extends ScalaArrayParameter {
             throw new RuntimeException();
         }
 
-        return "__global " + type.replace('.', '_') + "* " + name;
+        return "__global " + type.replace('.', '_') + "* restrict " + name;
     }
 
     @Override
@@ -33,7 +33,7 @@ public class ScalaPrimitiveOrObjectArrayParameter extends ScalaArrayParameter {
             throw new RuntimeException();
         }
 
-        return "__global " + type.replace('.', '_') + "* " + name;
+        return "__global " + type.replace('.', '_') + "* restrict " + name;
     }
 
     @Override

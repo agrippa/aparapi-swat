@@ -18,7 +18,7 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
         final String param;
         if (!typeParameterIsObject(field)) {
             param = "__global " + ClassModel.convert(
-                    typeParameterDescs.get(field), "", true) + "* " + name + "_" + (field + 1);
+                    typeParameterDescs.get(field), "", true) + "* restrict " + name + "_" + (field + 1);
         } else {
             String fieldDesc = typeParameterDescs.get(field);
             if (fieldDesc.charAt(0) != 'L' ||
@@ -45,7 +45,7 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
                     param = tmp.getOutputParameterString(writer);
                 }
             } else {
-                param = "__global " + fieldDesc.replace('.', '_') + "* " + name +
+                param = "__global " + fieldDesc.replace('.', '_') + "* restrict " + name +
                     "_" + (field + 1);
             }
         }
@@ -60,7 +60,7 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
 
         final String firstParam = getParameterStringFor(writer, 0);
         final String secondParam = getParameterStringFor(writer, 1);
-        String containerParam = "__global " + getType() + " *" + name;
+        String containerParam = "__global " + getType() + " * restrict " + name;
         return firstParam + ", " + secondParam + ", " + containerParam;
     }
 

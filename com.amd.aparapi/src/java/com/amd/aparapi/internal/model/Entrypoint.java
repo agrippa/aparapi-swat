@@ -110,8 +110,6 @@ public class Entrypoint implements Cloneable {
        return parallelClassNameToId.containsKey(name);
    }
 
-   public static final String sparseVectorTilingConfig = "sparse_vector.tiling";
-   // public static final String denseVectorTilingConfig = "dense_vector.tiling";
    public static final String clDevicePointerSize = "device.pointer_size";
    private final Map<String, String> config;
    public Map<String, String> getConfig() { return config; }
@@ -417,13 +415,8 @@ public class Entrypoint implements Cloneable {
 
             if (className.equals("org.apache.spark.mllib.linalg.DenseVector")) {
                 memberClassModel = DenseVectorClassModel.create();
-                        // Integer.parseInt(config.get(denseVectorTilingConfig)));
             } else if (className.equals("org.apache.spark.mllib.linalg.SparseVector")) {
-                memberClassModel = SparseVectorClassModel.create(
-                        Integer.parseInt(config.get(sparseVectorTilingConfig)));
-            // } else if (className.equals("scala.Tuple2")) {
-            //     // Can arise if a Tuple2 is used in a broadcasted array
-            //     throw new UnsupportedOperationException();
+                memberClassModel = SparseVectorClassModel.create();
             } else {
                 // Immediately add this class and all its supers if necessary
                 memberClassModel = ClassModel.createClassModel(memberClass, this,
@@ -749,7 +742,8 @@ public class Entrypoint implements Cloneable {
 
    public static boolean isSparseVectorIndicesOrValues(Instruction insn) {
        if (insn instanceof I_INVOKEVIRTUAL) {
-           final MethodEntryInfo methodEntry = ((I_INVOKEVIRTUAL)insn).getConstantPoolMethodEntry();
+           final MethodEntryInfo methodEntry = ((I_INVOKEVIRTUAL)insn)
+               .getConstantPoolMethodEntry();
            final String methodName = methodEntry.getMethodName();
            final String methodDesc = methodEntry.getMethodSig();
            final String owner = methodEntry.getClassName();
