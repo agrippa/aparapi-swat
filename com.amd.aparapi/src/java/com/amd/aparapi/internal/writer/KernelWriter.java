@@ -312,6 +312,10 @@ public abstract class KernelWriter extends BlockWriter{
              String name = stat.getConstantPoolMethodEntry().toString();
              if (name.equals("scala/runtime/BoxesRunTime.boxToInteger(I)Ljava/lang/Integer;")) {
                  s = "I";
+             } else if (name.equals("scala/runtime/BoxesRunTime.boxToFloat(F)Ljava/lang/Float;")) {
+                 s = "F";
+             } else if (name.equals("scala/runtime/BoxesRunTime.boxToDouble(D)Ljava/lang/Double;")) {
+                 s = "D";
              } else {
                  throw new RuntimeException("Unsupported: " + name);
              }
@@ -326,8 +330,8 @@ public abstract class KernelWriter extends BlockWriter{
          } else if (arg instanceof I_FCONST_0 || arg instanceof I_FCONST_1 ||
                  arg instanceof I_FCONST_2) {
              s = "F";
-         } else if (arg instanceof I_LDC_W) {
-             String typeName = ((I_LDC_W)arg).getValue().getClass().getName();
+         } else if (arg instanceof I_LDC_W || arg instanceof I_LDC) {
+             String typeName = ((Constant)arg).getValue().getClass().getName();
              if (typeName.equals("java.lang.Float")) {
                  s = "F";
              } else if (typeName.equals("java.lang.Integer")) {
@@ -343,11 +347,14 @@ public abstract class KernelWriter extends BlockWriter{
              String returnType = desc.substring(desc.lastIndexOf(")") + 1);
              s = returnType;
          } else if (arg instanceof I_ILOAD_0 || arg instanceof I_ILOAD_1 ||
-                 arg instanceof I_ILOAD_2 || arg instanceof I_ILOAD_3) {
+                 arg instanceof I_ILOAD_2 || arg instanceof I_ILOAD_3 || arg instanceof I_ILOAD) {
              s = "I";
          } else if (arg instanceof I_DLOAD_0 || arg instanceof I_DLOAD_1 ||
-                 arg instanceof I_DLOAD_2 || arg instanceof I_DLOAD_3) {
+                 arg instanceof I_DLOAD_2 || arg instanceof I_DLOAD_3 || arg instanceof I_DLOAD) {
              s = "D";
+         } else if (arg instanceof I_FLOAD_0 || arg instanceof I_FLOAD_1 ||
+                 arg instanceof I_FLOAD_2 || arg instanceof I_FLOAD_3 || arg instanceof I_FLOAD) {
+             s = "F";
          } else {
              throw new RuntimeException("Unable to do type inference on " + arg);
          }
