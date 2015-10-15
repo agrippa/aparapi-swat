@@ -1146,6 +1146,8 @@ public class KernelRunner extends KernelRunnerJNI{
                   try {
                      openCL = KernelWriter.writeToString(entryPoint,
                              new java.util.LinkedList<ScalaArrayParameter>()).kernel;
+                  } catch (final ClassNotFoundException cnf) {
+                     throw new RuntimeException(cnf);
                   } catch (final CodeGenException codeGenException) {
                      return warnFallBackAndExecute(_entrypointName, _range, _passes, codeGenException);
                   } catch (final AparapiException e) {

@@ -156,12 +156,8 @@ public class Tuple2ClassModel extends HardCodedClassModel {
     @Override
     public List<String> getNestedTypeDescs() {
         List<String> l = new ArrayList<String>(2);
-        if (getFirstTypeDesc().startsWith("L")) {
-            l.add(getFirstTypeDesc());
-        }
-        if (getSecondTypeDesc().startsWith("L")) {
-            l.add(getSecondTypeDesc());
-        }
+        l.add(getFirstTypeDesc());
+        l.add(getSecondTypeDesc());
         return l;
     }
 
@@ -169,8 +165,8 @@ public class Tuple2ClassModel extends HardCodedClassModel {
     public String getMangledClassName() {
         final String firstTypeClassName = descToName(getFirstTypeDesc());
         final String secondTypeClassName = descToName(getSecondTypeDesc());
-        return "scala_Tuple2_" + firstTypeClassName.replace(".", "_") + "_" +
-          secondTypeClassName.replace(".", "_");
+        return "scala_Tuple2_" + KernelWriter.removeBadChars(firstTypeClassName) + "_" +
+          KernelWriter.removeBadChars(secondTypeClassName);
     }
 
    @Override

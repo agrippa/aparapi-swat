@@ -125,8 +125,8 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
         for (String typeParam : typeParameterDescs) {
             sb.append("_");
             if (typeParam.charAt(0) == 'L') {
-                sb.append(typeParam.substring(1,
-                            typeParam.length() - 1).replace(".", "_"));
+                sb.append(KernelWriter.removeBadChars(typeParam.substring(1,
+                                typeParam.length() - 1)));
             } else {
                 sb.append(typeParam);
             }

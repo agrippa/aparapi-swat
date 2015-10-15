@@ -23,7 +23,8 @@ import java.util.logging.*;
 
 public abstract class ClassModel {
 
-   public abstract MethodModel checkForHardCodedMethods(String name, String sig) throws AparapiException;
+   public abstract MethodModel checkForHardCodedMethods(String name, String sig,
+           String templateGuess) throws AparapiException;
    public abstract MethodModel getMethodModel(String _name, String _signature)
      throws AparapiException;
    public abstract String getMangledClassName();
@@ -2059,6 +2060,10 @@ public abstract class ClassModel {
 
    public static final char SIGC_PACKAGE = '/';
 
+   public static final char SIGC_OPEN_TEMPLATE = '<';
+
+   public static final char SIGC_CLOSE_TEMPLATE = '>';
+
    private static Logger logger = Logger.getLogger(Config.getLoggerName());
 
    protected ClassModel superClazz = null;
@@ -2301,7 +2306,14 @@ public abstract class ClassModel {
             case SIGC_CLASS: {
                final StringBuilder classNameBuffer = new StringBuilder();
                i++;
-               while ((i < length) && (chars[i] != SIGC_END_CLASS)) {
+               int nesting = 0;
+               while (nesting > 0 || (i < length) && (chars[i] != SIGC_END_CLASS)) {
+                  if (chars[i] == SIGC_OPEN_TEMPLATE) {
+                      nesting++;
+                  } else if (chars[i] == SIGC_CLOSE_TEMPLATE) {
+                      nesting--;
+                  }
+
                   if (chars[i] == SIGC_PACKAGE) {
                      classNameBuffer.append('.');
                   } else {

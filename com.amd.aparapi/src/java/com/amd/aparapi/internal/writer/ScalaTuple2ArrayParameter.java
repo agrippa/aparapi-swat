@@ -45,8 +45,8 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
                     param = tmp.getOutputParameterString(writer);
                 }
             } else {
-                param = "__global " + fieldDesc.replace('.', '_') + "* restrict " + name +
-                    "_" + (field + 1);
+                param = "__global " + KernelWriter.removeBadChars(fieldDesc) +
+                    "* restrict " + name + "_" + (field + 1);
             }
         }
         return param;

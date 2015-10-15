@@ -293,6 +293,75 @@ public abstract class KernelWriter extends BlockWriter{
        write(allocVarName);
    }
 
+   private String inferType(ConstructorCall call) {
+     StringBuilder result = new StringBuilder();
+     I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
+     int nargs = invokeSpecial.getStackConsumeCount() - 1;
+     for (int a = 0; a < nargs; a++) {
+         Instruction arg = invokeSpecial.getArg(a);
+
+         final String s;
+         if (arg instanceof I_CHECKCAST) {
+             I_CHECKCAST cast = (I_CHECKCAST)arg;
+             s = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+         } else if (arg instanceof ConstructorCall) {
+             ConstructorCall constr = (ConstructorCall)arg;
+             s = inferType(constr);
+         } else if (arg instanceof I_INVOKESTATIC) {
+             I_INVOKESTATIC stat = (I_INVOKESTATIC)arg;
+             String name = stat.getConstantPoolMethodEntry().toString();
+             if (name.equals("scala/runtime/BoxesRunTime.boxToInteger(I)Ljava/lang/Integer;")) {
+                 s = "I";
+             } else {
+                 throw new RuntimeException("Unsupported: " + name);
+             }
+         } else if (arg instanceof I_I2F) {
+             s = "F";
+         } else if (arg instanceof I_FADD || arg instanceof I_FDIV ||
+                 arg instanceof I_FMUL || arg instanceof I_FSUB) {
+             s = "F";
+         } else if (arg instanceof I_IADD || arg instanceof I_IDIV ||
+                 arg instanceof I_IMUL || arg instanceof I_ISUB) {
+             s = "I";
+         } else if (arg instanceof I_FCONST_0 || arg instanceof I_FCONST_1 ||
+                 arg instanceof I_FCONST_2) {
+             s = "F";
+         } else if (arg instanceof I_LDC_W) {
+             String typeName = ((I_LDC_W)arg).getValue().getClass().getName();
+             if (typeName.equals("java.lang.Float")) {
+                 s = "F";
+             } else if (typeName.equals("java.lang.Integer")) {
+                 s = "I";
+             } else if (typeName.equals("java.lang.Double")) {
+                 s = "D";
+             } else {
+                 throw new RuntimeException(typeName);
+             }
+         } else if (arg instanceof I_INVOKEVIRTUAL) {
+             MethodEntryInfo info = ((I_INVOKEVIRTUAL)arg).getConstantPoolMethodEntry();
+             String desc = info.getMethodSig();
+             String returnType = desc.substring(desc.lastIndexOf(")") + 1);
+             s = returnType;
+         } else if (arg instanceof I_ILOAD_0 || arg instanceof I_ILOAD_1 ||
+                 arg instanceof I_ILOAD_2 || arg instanceof I_ILOAD_3) {
+             s = "I";
+         } else if (arg instanceof I_DLOAD_0 || arg instanceof I_DLOAD_1 ||
+                 arg instanceof I_DLOAD_2 || arg instanceof I_DLOAD_3) {
+             s = "D";
+         } else {
+             throw new RuntimeException("Unable to do type inference on " + arg);
+         }
+
+         if (a != 0) result.append(",");
+         result.append(s);
+     }
+     String containerClass = invokeSpecial.getConstantPoolMethodEntry().getClassName();
+     if (containerClass.startsWith("scala/Tuple2")) {
+         containerClass = "scala/Tuple2";
+     }
+     return containerClass + "(" + result.toString() + ")";
+   }
+
    @Override public void writeConstructorCall(ConstructorCall call) throws CodeGenException {
      I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
 
@@ -300,7 +369,9 @@ public abstract class KernelWriter extends BlockWriter{
      final String constructorName = constructorEntry.getMethodName();
      final String constructorSignature = constructorEntry.getMethodSig();
 
-     MethodModel m = entryPoint.getCallTarget(constructorEntry, true);
+     String guess = inferType(call);
+
+     MethodModel m = entryPoint.getCallTarget(constructorEntry, true, guess);
      if (m == null) {
          throw new RuntimeException("Unable to find constructor for name=" +
             constructorEntry + " sig=" + constructorSignature);
@@ -396,7 +467,7 @@ public abstract class KernelWriter extends BlockWriter{
          }
       } else {
          final boolean isSpecial = _methodCall instanceof I_INVOKESPECIAL;
-         MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial);
+         MethodModel m = entryPoint.getCallTarget(_methodEntry, isSpecial, null);
          writeAllocCheck = mayFailHeapAllocation.contains(m);
 
          String getterFieldName = null;
@@ -505,7 +576,7 @@ public abstract class KernelWriter extends BlockWriter{
               final ConstructorCall constructor = (ConstructorCall)_methodCall.getArg(1);
               final MethodEntryInfo constructorEntry = constructor.getInvokeSpecial()
                   .getConstantPoolMethodEntry();
-              MethodModel constructorModel = entryPoint.getCallTarget(constructorEntry, true);
+              MethodModel constructorModel = entryPoint.getCallTarget(constructorEntry, true, null);
               final ClassModel classModel = constructorModel.getMethod().getClassModel();
               final int stageId = entryPoint.getIdForParallelClassModel(classModel);
               write(constructorModel.getName() + "(this->stage" + stageId);
@@ -730,6 +801,27 @@ public abstract class KernelWriter extends BlockWriter{
      return false;
    }
 
+   public static String removeBadChars(String desc) {
+       final String tmp;
+       if (desc.indexOf("<") != -1) {
+           final String[] typeParams = Entrypoint.parseTypeParameters(desc);
+           final StringBuilder sb = new StringBuilder();
+           sb.append(desc.substring(0, desc.indexOf("<")));
+           for (String t : typeParams) {
+               sb.append("_");
+               if (t.startsWith("L")) {
+                   if (!t.endsWith(";")) throw new RuntimeException();
+                   t = t.substring(1, t.length() - 1);
+               }
+               sb.append(t);
+           }
+           tmp = sb.toString();
+       } else {
+           tmp = desc;
+       }
+       return tmp.replace('.', '_').replace(';', '_');
+   }
+
    private void emitExternalObjectDef(ClassModel cm) {
        final ArrayList<FieldNameInfo> fieldSet = cm.getStructMembers();
 
@@ -756,7 +848,7 @@ public abstract class KernelWriter extends BlockWriter{
 
                String cType = convertType(field.desc, true);
                if (field.desc.startsWith("L")) {
-                   cType = "__global " + cType.replace('.', '_') + " *";
+                   cType = "__global " + removeBadChars(cType) + " *";
                } else if (field.desc.startsWith("[")) {
                    cType = "__global " + cType;
                }
@@ -835,25 +927,112 @@ public abstract class KernelWriter extends BlockWriter{
        return true;
    }
 
-   private void writeDenseVectorValueUpdate(String varname) {
-       writeln(varname + "->values = " +
-               "((__global char *)" + varname + "->values) - " +
+   private void writeNormalizeToHeap(String varname) {
+       writeln(varname + " = " +
+               "((__global char *)" + varname + ") - " +
                "((__global char *)this->heap);");
+   }
+
+   // member == 1 or member == 2
+   private void writeTuple2MemberUpdate(String varname, int member,
+           ScalaArrayParameter outParam, boolean topLevel) throws ClassNotFoundException {
+       final String fieldName = varname + "->_" + (member + 1);
+
+       if (outParam.typeParameterIsObject(member)) {
+
+           if (outParam.getTypeParameter(member).equals("L" +
+                       DENSEVECTOR_CLASSNAME + ";")) {
+               writeDenseVectorValueUpdate(fieldName);
+           } else if (outParam.getTypeParameter(member).equals("L" +
+                       SPARSEVECTOR_CLASSNAME + ";")) {
+               writeSparseVectorValueUpdate(fieldName);
+           } else if (outParam.getTypeParameter(member).startsWith("L" +
+                       TUPLE2_CLASSNAME)) {
+               ScalaTuple2ArrayParameter actual = (ScalaTuple2ArrayParameter)outParam;
+
+               String nestedParam = actual.getTypeParameter(member);
+               if (nestedParam.startsWith("L")) {
+                   if (!nestedParam.endsWith(";")) throw new RuntimeException();
+                   nestedParam = nestedParam.substring(1, nestedParam.length() - 1);
+               }
+             
+               final ScalaArrayParameter nestedOutParam;
+               if (nestedParam.indexOf("<") != -1) {
+                   String[] nestedNestedParams = nestedParam.substring(
+                           nestedParam.indexOf("<") + 1,
+                           nestedParam.indexOf(">")).split(",");
+                   String baseType = nestedParam.substring(0, nestedParam.indexOf("<"));
+                   nestedOutParam =
+                       ScalaArrayParameter.createArrayParameterFor(
+                               baseType, Class.forName(baseType),
+                               fieldName, ScalaParameter.DIRECTION.OUT);
+                   for (int i = 0; i < nestedNestedParams.length; i++) {
+                       nestedOutParam.addTypeParameter(nestedNestedParams[i],
+                               nestedNestedParams[i].startsWith("L"));
+                   }
+               } else {
+                   nestedOutParam =
+                       ScalaArrayParameter.createArrayParameterFor(
+                               nestedParam, Class.forName(nestedParam), fieldName,
+                               ScalaParameter.DIRECTION.OUT);
+               }
+               writeOutputUpdate(fieldName, nestedOutParam, false);
+               newLine();
+           }
+
+           if (!topLevel) {
+               writeNormalizeToHeap(fieldName);
+           }
+
+           if (topLevel) {
+               write(outParam.getName() + "_" + (member + 1) + "[i] = *(" +
+                   varname + "->_" + (member + 1) + ");");
+           }
+
+       } else {
+           if (topLevel) {
+               write(outParam.getName() + "_" + (member + 1) + "[i] = " + varname +
+                   "->_" + (member + 1) + ";");
+           }
+       }
+   }
+
+   private void writeDenseVectorValueUpdate(String varname) {
+       writeNormalizeToHeap(varname + "->values");
        writeln(varname + "->tiling = iter;");
    }
 
    private void writeSparseVectorValueUpdate(String varname) {
-       writeln(varname + "->values = " +
-               "((__global char *)" + varname + "->values) - " +
-               "((__global char *)this->heap);");
-       writeln(varname + "->indices = " +
-               "((__global char *)" + varname + "->indices) - " +
-               "((__global char *)this->heap);");
+       writeNormalizeToHeap(varname + "->values");
+       writeNormalizeToHeap(varname + "->indices");
        writeln(varname + "->tiling = iter;");
    }
 
+   private void writeOutputUpdate(String varname, ScalaArrayParameter outParam, boolean topLevel) throws ClassNotFoundException {
+       if (outParam.getClazz() != null) {
+
+           if (outParam.getClazz().getName().equals(TUPLE2_CLASSNAME)) {
+               writeTuple2MemberUpdate(varname, 0, outParam, topLevel);
+               newLine();
+               writeTuple2MemberUpdate(varname, 1, outParam, topLevel);
+           } else if (outParam.getClazz().getName().equals(
+                       DENSEVECTOR_CLASSNAME)) {
+               // Offset in bytes
+               writeDenseVectorValueUpdate(varname);
+               write(outParam.getName() + "[i] = *" + varname + ";");
+           } else if (outParam.getClazz().getName().equals(
+                       SPARSEVECTOR_CLASSNAME)) {
+               // Offset in bytes
+               writeSparseVectorValueUpdate(varname);
+               write(outParam.getName() + "[i] = *" + varname + ";");
+           } else {
+               write(outParam.getName() + "[i] = *" + varname + ";");
+           }
+       }
+   }
+
    @Override public void write(Entrypoint _entryPoint,
-         Collection<ScalaArrayParameter> params) throws CodeGenException {
+         Collection<ScalaArrayParameter> params) throws CodeGenException, ClassNotFoundException {
       final List<String> thisStruct = new ArrayList<String>();
       final List<String> argLines = new ArrayList<String>();
       final List<String> assigns = new ArrayList<String>();
@@ -1047,9 +1226,12 @@ public abstract class KernelWriter extends BlockWriter{
         doesHeapAllocation(mm, mayFailHeapAllocation);
       }
 
+      final Set<String> methodsWritten = new HashSet<String>();
       for (HardCodedClassModel model : _entryPoint.getHardCodedClassModels()) {
           for (HardCodedMethodModel method : model.getMethods()) {
-              if (!method.isGetter()) {
+              if (!methodsWritten.contains(method.getName()) &&
+                          !method.isGetter()) {
+                  methodsWritten.add(method.getName());
                   newLine();
                   write(method.getMethodDef(model, this));
                   newLine();
@@ -1397,52 +1579,7 @@ public abstract class KernelWriter extends BlockWriter{
            {
              write("processing_succeeded[i] = 1;");
              newLine();
-             if (outParam.getClazz() != null) {
-                 if (outParam.getClazz().getName().equals(TUPLE2_CLASSNAME)) {
-                     if (outParam.typeParameterIsObject(0)) {
-                         if (outParam.getTypeParameter(0).equals("L" +
-                                     DENSEVECTOR_CLASSNAME + ";")) {
-                             writeDenseVectorValueUpdate("result->_1");
-                         } else if (outParam.getTypeParameter(0).equals("L" +
-                                     SPARSEVECTOR_CLASSNAME + ";")) {
-                             writeSparseVectorValueUpdate("result->_1");
-                         }
-                         write(outParam.getName() + "_1[i] = *(result->_1);");
-                     } else {
-                         write(outParam.getName() + "_1[i] = result->_1;");
-                     }
-
-                     newLine();
-
-                     if (outParam.typeParameterIsObject(1)) {
-                         if (outParam.getTypeParameter(1).equals("L" +
-                                     DENSEVECTOR_CLASSNAME + ";")) {
-                             writeDenseVectorValueUpdate("result->_2");
-                         } else if (outParam.getTypeParameter(1).equals("L" +
-                                     SPARSEVECTOR_CLASSNAME + ";")) {
-                             writeSparseVectorValueUpdate("result->_2");
-                         }
-
-                         write(outParam.getName() + "_2[i] = *(result->_2);");
-                     } else {
-                         write(outParam.getName() + "_2[i] = result->_2;");
-                     }
-                 } else if (outParam.getClazz().getName().equals(
-                             DENSEVECTOR_CLASSNAME)) {
-                     // Offset in bytes
-                     writeDenseVectorValueUpdate("result");
-                     write(outParam.getName() + "[i] = *result;");
-                 } else if (outParam.getClazz().getName().equals(
-                             SPARSEVECTOR_CLASSNAME)) {
-                     // Offset in bytes
-                     writeSparseVectorValueUpdate("result");
-                     write(outParam.getName() + "[i] = *result;");
-                 } else {
-                     write(outParam.getName() + "[i] = *result;");
-                 }
-             } else {
-                 // write(outParam.getName() + "[i] = result;");
-             }
+             writeOutputUpdate("result", outParam, true);
            }
            out();
            newLine();
@@ -1477,45 +1614,6 @@ public abstract class KernelWriter extends BlockWriter{
       out();
       newLine();
       writeln("}");
-
-      // final String returnTypeName;
-      // if (_entryPoint.getMethodModel().getReturnType().equals("I")) {
-      //   returnTypeName = "int";
-      // } else {
-      //   throw new RuntimeException("Unsupported entry point return type \"" +
-      //       _entryPoint.getMethodModel() + "\"");
-      // }
-
-      // write(returnTypeName + " " +
-      //     _entryPoint.getMethodModel().getSimpleName() + "(");
-
-      // in();
-
-      // write("int x");
-
-      // for (final String line : argLines) {
-      //    write(", ");
-      //    newLine();
-      //    write(line);
-      // }
-
-      // newLine();
-      // out();
-      // write("){");
-      // in();
-      // newLine();
-      // writeln("This thisStruct;");
-      // writeln("This* this=&thisStruct;");
-      // for (final String line : assigns) {
-      //    write(line);
-      //    writeln(";");
-      // }
-
-      // writeMethodBody(_entryPoint.getMethodModel());
-      // out();
-      // newLine();
-      // writeln("}");
-      // out();
    }
 
    @Override public void writeThisRef() {
@@ -1570,7 +1668,7 @@ public abstract class KernelWriter extends BlockWriter{
 
    public static WriterAndKernel writeToString(Entrypoint _entrypoint,
          Collection<ScalaArrayParameter> params)
-         throws CodeGenException, AparapiException {
+         throws CodeGenException, AparapiException, ClassNotFoundException {
 
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(){

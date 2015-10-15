@@ -88,7 +88,8 @@ public class LoadedClassModel extends ClassModel {
    }
 
    @Override
-   public MethodModel checkForHardCodedMethods(String name, String desc) throws AparapiException {
+   public MethodModel checkForHardCodedMethods(String name, String desc,
+           String templateGuess) throws AparapiException {
       return null;
    }
 

@@ -411,12 +411,24 @@ public class Entrypoint implements Cloneable {
               ClassModel.wrap(className, matcher));
       if (memberClassModel == null) {
          try {
-            final Class<?> memberClass = Class.forName(className);
+            final Class<?> memberClass;
+            if (className.startsWith("scala.Tuple2")) {
+                memberClass = Class.forName("scala.Tuple2");
+            } else {
+                memberClass = Class.forName(className);
+            }
 
             if (className.equals("org.apache.spark.mllib.linalg.DenseVector")) {
                 memberClassModel = DenseVectorClassModel.create();
             } else if (className.equals("org.apache.spark.mllib.linalg.SparseVector")) {
                 memberClassModel = SparseVectorClassModel.create();
+            } else if (className.startsWith("scala.Tuple2") && !className.equals("scala.Tuple2")) {
+                final String[] typesArr = parseTypeParameters(className);
+                if (typesArr.length != 2) {
+                    throw new RuntimeException("Expected two component type " +
+                        "array, but had " + typesArr.length + " components");
+                }
+                memberClassModel = Tuple2ClassModel.create(typesArr[0], typesArr[1], true);
             } else {
                 // Immediately add this class and all its supers if necessary
                 memberClassModel = ClassModel.createClassModel(memberClass, this,
@@ -847,11 +859,13 @@ public class Entrypoint implements Cloneable {
       for (HardCodedClassModel model : hardCodedClassModels) {
           for (String desc : model.getNestedTypeDescs()) {
               // Convert object desc to class name
-              String nestedClass = desc.substring(1, desc.length() - 1);
-              lexicalOrdering.add(nestedClass);
-              addToObjectArrayFieldsClasses(nestedClass,
-                  getOrUpdateAllClassAccesses(nestedClass,
-                    new ShouldNotCallMatcher()));
+              if (desc.startsWith("L")) {
+                  String nestedClass = desc.substring(1, desc.length() - 1);
+                  lexicalOrdering.add(nestedClass);
+                  addToObjectArrayFieldsClasses(nestedClass,
+                      getOrUpdateAllClassAccesses(nestedClass,
+                        new ShouldNotCallMatcher()));
+              }
           }
       }
 
@@ -1449,6 +1463,43 @@ public class Entrypoint implements Cloneable {
 
    private final Map<String, Integer> sizeOfCache = new HashMap<String, Integer>();
 
+   public static String[] parseTypeParameters(String fullDesc) {
+       final int openBraceIndex = fullDesc.indexOf("<");
+       if (openBraceIndex == -1) {
+           throw new RuntimeException("Expected open brace in " + fullDesc);
+       }
+       final int closeBraceIndex = fullDesc.indexOf(">");
+       if (closeBraceIndex == -1) {
+           throw new RuntimeException("Expected close brace in " + fullDesc);
+       }
+       final String types = fullDesc.substring(openBraceIndex + 1, closeBraceIndex);
+       final String[] typesArr = types.split(",");
+       return typesArr;
+   }
+
+   private static boolean descAndModelMatches(String desc, ClassModel cm) {
+       String classDesc = "L" + cm.getClassWeAreModelling().getName() + ";";
+       if (desc.equals(classDesc)) return true;
+
+       if (cm instanceof HardCodedClassModel && desc.indexOf("<") != -1) {
+           // Some type parameters to help us guess
+           final HardCodedClassModel hardCoded = (HardCodedClassModel)cm;
+           final List<String> typeDescs = hardCoded.getNestedTypeDescs();
+           final String[] typeParams = parseTypeParameters(desc);
+
+           if (typeDescs.size() == typeParams.length) {
+               boolean match = true;
+               for (int i = 0; i < typeDescs.size() && match; i++) {
+                   if (!typeDescs.get(i).equals(typeParams[i])) {
+                       match = false;
+                   }
+               }
+               return match;
+           }
+       }
+       return false;
+   }
+
    public int getSizeOf(String desc) {
        if (desc.equals("Z")) desc = "B";
 
@@ -1458,8 +1509,7 @@ public class Entrypoint implements Cloneable {
            }
 
            for (final ClassModel cm : objectArrayFieldsClasses) {
-             String classDesc = "L" + cm.getClassWeAreModelling().getName() + ";";
-             if (classDesc.equals(desc)) {
+             if (descAndModelMatches(desc, cm)) {
                final int size = cm.getTotalStructSize();
                if (size > 0) {
                    sizeOfCache.put(desc, cm.getTotalStructSize());
@@ -1536,10 +1586,10 @@ public class Entrypoint implements Cloneable {
    }
 
    private MethodModel lookForHardCodedMethod(MethodEntryInfo _methodEntry,
-           ClassModel classModel) {
+           ClassModel classModel, String guess) {
        try {
            MethodModel hardCoded = classModel.checkForHardCodedMethods(
-                   _methodEntry.getMethodName(), _methodEntry.getMethodSig());
+                   _methodEntry.getMethodName(), _methodEntry.getMethodSig(), guess);
            if (hardCoded != null) {
                return hardCoded;
            }
@@ -1554,7 +1604,8 @@ public class Entrypoint implements Cloneable {
     * @param _methodEntry MethodEntry for the desired target
     * @return the fully qualified name such as "com_amd_javalabs_opencl_demo_PaternityTest$SimpleKernel__actuallyDoIt"
     */
-   public MethodModel getCallTarget(MethodEntryInfo _methodEntry, boolean _isSpecial) {
+   public MethodModel getCallTarget(MethodEntryInfo _methodEntry,
+           boolean _isSpecial, String guess) {
 
       final String methodName = _methodEntry.getMethodName();
       ClassModelMethod target = getClassModel().getMethod(_methodEntry, _isSpecial);
@@ -1580,7 +1631,7 @@ public class Entrypoint implements Cloneable {
            String memberObjClassName = memberObjClass.getClassWeAreModelling().getName();
            if (memberObjClassName.equals(entryClassNameInDotForm)) {
                MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
-                   memberObjClass);
+                   memberObjClass, guess);
                if (hardCoded != null) return hardCoded;
 
                target = memberObjClass.getMethod(_methodEntry, false);
@@ -1611,7 +1662,7 @@ public class Entrypoint implements Cloneable {
       if (target == null) {
           for (ClassModel possibleMatch : matchingClassModels) {
                MethodModel hardCoded = lookForHardCodedMethod(_methodEntry,
-                   possibleMatch);
+                   possibleMatch, guess);
                if (hardCoded != null) return hardCoded;
 
                target = possibleMatch.getMethod(_methodEntry, false);

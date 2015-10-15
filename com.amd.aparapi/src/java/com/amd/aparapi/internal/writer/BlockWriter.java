@@ -896,5 +896,5 @@ public abstract class BlockWriter{
       }
    }
 
-   public abstract void write(Entrypoint entryPoint, Collection<ScalaArrayParameter> params) throws CodeGenException;
+   public abstract void write(Entrypoint entryPoint, Collection<ScalaArrayParameter> params) throws CodeGenException, ClassNotFoundException;
 }
