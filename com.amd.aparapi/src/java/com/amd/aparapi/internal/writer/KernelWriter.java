@@ -324,6 +324,9 @@ public abstract class KernelWriter extends BlockWriter{
          } else if (arg instanceof I_FADD || arg instanceof I_FDIV ||
                  arg instanceof I_FMUL || arg instanceof I_FSUB) {
              s = "F";
+         } else if (arg instanceof I_DADD || arg instanceof I_DDIV ||
+                 arg instanceof I_DMUL || arg instanceof I_DSUB) {
+             s = "D";
          } else if (arg instanceof I_IADD || arg instanceof I_IDIV ||
                  arg instanceof I_IMUL || arg instanceof I_ISUB) {
              s = "I";
@@ -355,6 +358,16 @@ public abstract class KernelWriter extends BlockWriter{
          } else if (arg instanceof I_FLOAD_0 || arg instanceof I_FLOAD_1 ||
                  arg instanceof I_FLOAD_2 || arg instanceof I_FLOAD_3 || arg instanceof I_FLOAD) {
              s = "F";
+         } else if (arg instanceof I_ICONST_M1 || arg instanceof I_ICONST_0 ||
+                 arg instanceof I_ICONST_1 || arg instanceof I_ICONST_2 ||
+                 arg instanceof I_ICONST_3 || arg instanceof I_ICONST_4 ||
+                 arg instanceof I_ICONST_5) {
+             s = "I";
+         } else if (arg instanceof I_FCONST_0 || arg instanceof I_FCONST_1 ||
+                 arg instanceof I_FCONST_2) {
+             s = "F";
+         } else if (arg instanceof I_DCONST_0 || arg instanceof I_DCONST_1) {
+             s = "D";
          } else {
              throw new RuntimeException("Unable to do type inference on " + arg);
          }
