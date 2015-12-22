@@ -112,6 +112,12 @@ public abstract class KernelWriter extends BlockWriter{
 
    private Set<MethodModel> mayFailHeapAllocation = null;
 
+   public final boolean multiInput;
+
+   public KernelWriter(boolean multiInput) {
+       this.multiInput = multiInput;
+   }
+
    public final static Map<String, String> javaToCLIdentifierMap = new HashMap<String, String>();
    {
       javaToCLIdentifierMap.put("getGlobalId()I", "get_global_id(0)");
@@ -1348,12 +1354,6 @@ public abstract class KernelWriter extends BlockWriter{
                         mm.getMethod().isStatic())) { // full scope but skip this
                final String descriptor = lvi.getVariableDescriptor();
 
-               // if (processingConstructor && isParallelModel &&
-               //         lvi.getVariableName().equals("$outer")) {
-               //     // Skip reference to enclosing lambda, as it has no fields
-               //     continue;
-               // }
-
                if (alreadyHasFirstArg) {
                   write(", ");
                }
@@ -1518,9 +1518,12 @@ public abstract class KernelWriter extends BlockWriter{
               writeln("this->stage" + lambda.getKey() + " = &stage" + lambda.getKey() + ";");
           }
       }
-      for (final String line : assigns) {
-         write(line);
-         writeln(";");
+
+      if (!multiInput) {
+          for (final String line : assigns) {
+             write(line);
+             writeln(";");
+          }
       }
 
       for (ScalaArrayParameter p : params) {
@@ -1547,6 +1550,14 @@ public abstract class KernelWriter extends BlockWriter{
            writeln("else if (processing_succeeded[i]) continue;");
            writeln("this->alloc_failed = 0;");
          }
+
+         if (multiInput) {
+             for (final String line : assigns) {
+                write(line);
+                writeln(";");
+             }
+         }
+
 
          for (ScalaArrayParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
@@ -1687,11 +1698,11 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    public static WriterAndKernel writeToString(Entrypoint _entrypoint,
-         Collection<ScalaArrayParameter> params)
+         Collection<ScalaArrayParameter> params, boolean multiInput)
          throws CodeGenException, AparapiException, ClassNotFoundException {
 
       final StringBuilder openCLStringBuilder = new StringBuilder();
-      final KernelWriter openCLWriter = new KernelWriter(){
+      final KernelWriter openCLWriter = new KernelWriter(multiInput) {
          private int writtenSinceLastNewLine = 0;
          private int mark = -1;
 

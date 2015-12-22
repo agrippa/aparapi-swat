@@ -403,6 +403,10 @@ public abstract class BlockWriter{
      return typeName.startsWith("L");
    }
 
+   private static String getAnonymousVariableName(MethodModel method, int localVariableIndex) {
+       return method.getName() + "__tmp" + localVariableIndex;
+   }
+
    public boolean writeInstruction(Instruction _instruction) throws CodeGenException {
       boolean writeCheck = false;
 
@@ -450,8 +454,18 @@ public abstract class BlockWriter{
               write("*"); // All local assigns to object-typed variables should be a constructor
             }
          }
+         
          if (localVariableInfo == null) {
-            throw new CodeGenException("outOfScope" + _instruction.getThisPC() + " = ");
+             /*
+              * Assume that this is a temporary, anonymous local that is stored
+              * to once and loaded from once. Used as a temporary storage
+              * location for some short-lived value which does not have a
+              * corresponding name in the user program.
+              */
+             String varname = getAnonymousVariableName(_instruction.getMethod(),
+                     assignToLocalVariable.getLocalVariableTableIndex());
+             // TODO type inference here
+             write("int " + varname + " = ");
          } else {
             write(localVariableInfo.getVariableName() + " = ");
          }
@@ -617,7 +631,13 @@ public abstract class BlockWriter{
       } else if (_instruction instanceof AccessLocalVariable) {
          final AccessLocalVariable localVariableLoadInstruction = (AccessLocalVariable) _instruction;
          final LocalVariableInfo localVariable = localVariableLoadInstruction.getLocalVariableInfo();
-         write(localVariable.getVariableName());
+         if (localVariable == null) {
+             String varname = getAnonymousVariableName(_instruction.getMethod(),
+                     localVariableLoadInstruction.getLocalVariableTableIndex());
+             write(varname);
+         } else {
+             write(localVariable.getVariableName());
+         }
       } else if (_instruction instanceof I_IINC) {
          final I_IINC location = (I_IINC) _instruction;
          final LocalVariableInfo localVariable = location.getLocalVariableInfo();

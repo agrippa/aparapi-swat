@@ -57,6 +57,10 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
         if (dir != DIRECTION.IN) {
             throw new RuntimeException();
         }
+        if (writer.multiInput) {
+            throw new RuntimeException("No support for Tuple2 arrays " +
+                    "captured by multi-input lambdas");
+        }
 
         final String firstParam = getParameterStringFor(writer, 0);
         final String secondParam = getParameterStringFor(writer, 1);
@@ -86,16 +90,16 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
     }
 
     private static String getAssignStringFor(boolean parameterIsObject, int index,
-            String desc, boolean isRef, String target, String src) {
+            String desc, boolean isRef, String target, String src, String iterName) {
         if (index < 1 || index > 2) {
             throw new RuntimeException("should be only 1 or 2 for the two " + 
                     "Tuple2 fields");
         }
         String connector = isRef ? "->" : ".";
         if (parameterIsObject) {
-            return target + connector + "_" + index + " = " + src + "_" + index + " + i; ";
+            return target + connector + "_" + index + " = " + src + "_" + index + " + " + iterName + "; ";
         } else {
-            return target + connector + "_" + index + " = " + src + "_" + index + "[i]; ";
+            return target + connector + "_" + index + " = " + src + "_" + index + "[" + iterName + "]; ";
         }
     }
 
@@ -103,9 +107,9 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
     public String getInputInitString(KernelWriter writer, String src) {
         StringBuilder sb = new StringBuilder();
         sb.append(getAssignStringFor(typeParameterIsObject.get(0), 1,
-                typeParameterDescs.get(0), true, "my_" + name, name) +
+                typeParameterDescs.get(0), true, "my_" + name, name, "i") +
             getAssignStringFor(typeParameterIsObject.get(1), 2,
-                    typeParameterDescs.get(1), true, "my_" + name, name));
+                    typeParameterDescs.get(1), true, "my_" + name, name, "i"));
 
         // e.g. typeParameterDescs = I Lorg.apache.spark.mllib.linalg.DenseVector;
         final String denseVectorDesc = "L" +
@@ -132,15 +136,19 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
         if (dir != DIRECTION.IN) {
             throw new RuntimeException();
         }
+        if (writer.multiInput) {
+            throw new RuntimeException("No support for Tuple2 arrays " +
+                    "captured by multi-input lambdas");
+        }
 
         StringBuilder sb = new StringBuilder();
         sb.append("this->" + name + " = " + name + "; ");
-        sb.append("for (int i = 0; i < " + name + "__javaArrayLength; i++) { ");
+        sb.append("for (int ii = 0; ii < " + name + "__javaArrayLength; ii++) { ");
 
         sb.append(getAssignStringFor(typeParameterIsObject.get(0), 1,
-                typeParameterDescs.get(0), false, name + "[i]", name) +
+                typeParameterDescs.get(0), false, name + "[ii]", name, "ii") +
             getAssignStringFor(typeParameterIsObject.get(1), 2,
-                    typeParameterDescs.get(1), false, name + "[i]", name));
+                    typeParameterDescs.get(1), false, name + "[ii]", name, "ii"));
 
         sb.append(" } ");
         return sb.toString();

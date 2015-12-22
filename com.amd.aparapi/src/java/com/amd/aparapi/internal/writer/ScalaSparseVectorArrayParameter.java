@@ -22,6 +22,11 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
 
    @Override
    public String getInputParameterString(KernelWriter writer) {
+       if (writer.multiInput) {
+           throw new RuntimeException("No support for SparseVector arrays " +
+                   "captured by multi-input lambdas");
+       }
+
        return "__global org_apache_spark_mllib_linalg_SparseVector * restrict " + name +
            ", __global int * restrict " + name + "_indices, __global double * restrict " +
            name + "_values, __global int * restrict " + name +
@@ -57,6 +62,11 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
 
    @Override
    public String getGlobalInitString(KernelWriter writer) {
+       if (writer.multiInput) {
+           throw new RuntimeException("No support for SparseVector arrays " +
+                   "captured by multi-input lambdas");
+       }
+
        StringBuilder builder = new StringBuilder();
        builder.append("this->" + name + " = " + name + ";\n");
        builder.append("   for (int j = 0; j < n" + name + "; j++) {\n");
