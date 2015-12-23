@@ -422,6 +422,9 @@ public class Entrypoint implements Cloneable {
                 memberClassModel = DenseVectorClassModel.create();
             } else if (className.equals("org.apache.spark.mllib.linalg.SparseVector")) {
                 memberClassModel = SparseVectorClassModel.create();
+            } else if (className.equals("scala.Array")) {
+                // TODO
+                memberClassModel = ScalaArrayClassModel.create(((DescMatcher)matcher).desc[0]);
             } else if (className.startsWith("scala.Tuple2") && !className.equals("scala.Tuple2")) {
                 final String[] typesArr = parseTypeParameters(className);
                 if (typesArr.length != 2) {
@@ -854,12 +857,12 @@ public class Entrypoint implements Cloneable {
       } else {
           hardCodedClassModels = setHardCodedClassModels;
       }
-
+      
       // Add all hard coded class models to the set of class models
       for (HardCodedClassModel model : hardCodedClassModels) {
           for (String desc : model.getNestedTypeDescs()) {
               // Convert object desc to class name
-              if (desc.startsWith("L")) {
+              if (desc.startsWith("L") || desc.startsWith("[")) {
                   String nestedClass = desc.substring(1, desc.length() - 1);
                   lexicalOrdering.add(nestedClass);
                   addToObjectArrayFieldsClasses(nestedClass,
@@ -867,6 +870,9 @@ public class Entrypoint implements Cloneable {
                         new ShouldNotCallMatcher()));
               }
           }
+
+          lexicalOrdering.add(model.getClassWeAreModelling().getName());
+          addToObjectArrayFieldsClasses(model.getClassWeAreModelling().getName(), model);
       }
 
       // If we're working on a nested class (e.g. a Scala lambda), add its parent
@@ -1070,21 +1076,32 @@ public class Entrypoint implements Cloneable {
                   }
                } else if (instruction instanceof I_ARRAYLENGTH) {
                   Instruction child = instruction.getFirstChild();
-                  while(child instanceof I_AALOAD) {
+                  while (child instanceof I_AALOAD) {
                      child = child.getFirstChild();
                   }
-                  if (!(child instanceof AccessField)) {
+                  // if (!(child instanceof AccessField)) {
+                  //    throw new ClassParseException(
+                  //            ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
+                  // }
+                  if (child instanceof AccessField) {
+                     final AccessField childField = (AccessField) child;
+                     final String arrayName = childField
+                         .getConstantPoolFieldEntry().getNameAndTypeEntry()
+                         .getNameUTF8Entry().getUTF8();
+                     arrayFieldArrayLengthUsed.add(arrayName);
+                     if (logger.isLoggable(Level.FINE)) {
+                        logger.fine("Noted arraylength in " +
+                                methodModel.getName() + " on " + arrayName);
+                     }
+                  } else if (child instanceof LocalVariableConstIndexLoad) {
+                     LocalVariableConstIndexLoad accessLocal = (LocalVariableConstIndexLoad)child;
+                     final String arrayName = accessLocal.getLocalVariableInfo()
+                         .getVariableName();
+                     System.err.println("Local array length access on \"" + arrayName + "\"");
+                  } else {
+                     System.err.println(child + " " + child.getClass().getName());
                      throw new ClassParseException(
                              ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
-                  }
-                  final AccessField childField = (AccessField) child;
-                  final String arrayName = childField
-                      .getConstantPoolFieldEntry().getNameAndTypeEntry()
-                      .getNameUTF8Entry().getUTF8();
-                  arrayFieldArrayLengthUsed.add(arrayName);
-                  if (logger.isLoggable(Level.FINE)) {
-                     logger.fine("Noted arraylength in " +
-                             methodModel.getName() + " on " + arrayName);
                   }
                } else if (instruction instanceof AccessField) {
                   final AccessField access = (AccessField) instruction;

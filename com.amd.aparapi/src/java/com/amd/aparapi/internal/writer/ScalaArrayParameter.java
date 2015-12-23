@@ -151,7 +151,10 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
     public static ScalaArrayParameter createArrayParameterFor(String type,
             Class<?> clazz, String name, DIRECTION dir) {
         type = type.trim();
-        if (type.equals(KernelWriter.TUPLE2_CLASSNAME)) {
+        if (type.endsWith("[]")) {
+            // Some primitive array type
+            return new ScalaArrayOfArraysParameter(type, clazz, name, dir);
+        } else if (type.equals(KernelWriter.TUPLE2_CLASSNAME)) {
             return new ScalaTuple2ArrayParameter(type, clazz, name, dir);
         } else if (type.equals(KernelWriter.DENSEVECTOR_CLASSNAME)) {
             return new ScalaDenseVectorArrayParameter(type, clazz, name, dir);

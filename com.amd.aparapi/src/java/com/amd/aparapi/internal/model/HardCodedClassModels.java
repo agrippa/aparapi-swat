@@ -27,6 +27,8 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
        existing.add(model);
     }
 
+    public int size() { return hardCodedClassModels.size(); }
+
     public boolean haveClassModelFor(Class<?> clz) {
         return hardCodedClassModels.containsKey(clz.getName());
     }
@@ -67,7 +69,7 @@ public class HardCodedClassModels implements Iterable<HardCodedClassModel> {
     }
 
     public static class DescMatcher extends HardCodedClassModelMatcher {
-         private final String[] desc;
+         public final String[] desc;
 
          public DescMatcher(String[] desc) {
              this.desc = desc;
