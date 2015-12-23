@@ -1082,6 +1082,10 @@ public abstract class KernelWriter extends BlockWriter{
          } else if (signature.startsWith("[Lscala/Tuple2")) {
              param = new ScalaTuple2ArrayParameter(signature, field.getName(),
                      ScalaParameter.DIRECTION.IN);
+         } else if (multiInput && (signature.equals("[I") || signature.equals("[F") ||
+                 signature.equals("[D"))) {
+             param = new ScalaArrayOfArraysParameter(signature, field.getName(),
+                     ScalaParameter.DIRECTION.IN);
          } else if (signature.startsWith("[")) {
              param = new ScalaPrimitiveOrObjectArrayParameter(signature,
                      field.getName(), ScalaParameter.DIRECTION.IN);
@@ -1385,6 +1389,8 @@ public abstract class KernelWriter extends BlockWriter{
                  ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
                      converted, new SignatureMatcher(sig));
                  convertedType = cm.getMangledClassName() + "* ";
+               } else if (descriptor.startsWith("[")) {
+                 convertedType = "scala_Array* ";
                } else {
                  convertedType = convertType(descriptor, true);
                }

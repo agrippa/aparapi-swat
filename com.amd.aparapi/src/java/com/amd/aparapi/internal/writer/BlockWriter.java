@@ -568,10 +568,19 @@ public abstract class BlockWriter{
             load = load.getFirstChild();
             dim++;
          }
-         NameAndTypeEntry nameAndTypeEntry = ((AccessInstanceField) load).getConstantPoolFieldEntry().getNameAndTypeEntry();
-         final String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
-         String dimSuffix = isMultiDimensionalArray(nameAndTypeEntry) ? Integer.toString(dim) : "";
-         write("this->" + arrayName + arrayLengthMangleSuffix + dimSuffix);
+         if (load instanceof AccessInstanceField) {
+            NameAndTypeEntry nameAndTypeEntry = ((AccessInstanceField) load)
+                .getConstantPoolFieldEntry().getNameAndTypeEntry();
+            final String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
+            String dimSuffix = isMultiDimensionalArray(nameAndTypeEntry) ?
+                Integer.toString(dim) : "";
+            write("this->" + arrayName + arrayLengthMangleSuffix + dimSuffix);
+         } else if (load instanceof LocalVariableConstIndexLoad) {
+             assert(dim == 1);
+             final String arrayName = ((LocalVariableConstIndexLoad)load)
+                 .getLocalVariableInfo().getVariableName();
+             write(arrayName + "->size");
+         }
       } else if (_instruction instanceof AssignToField) {
          final AssignToField assignedField = (AssignToField) _instruction;
 
