@@ -31,7 +31,6 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
         if (writer.multiInput) {
             throw new RuntimeException("No support for non-multi-input array inputs");
         }
-        System.err.println(type);
         return "__global scala_Array * restrict " + name +
             ", __global " + primitiveElementType + " * restrict " +
             name + "_values, __global int * restrict " + name +

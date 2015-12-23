@@ -71,9 +71,6 @@ public abstract class KernelWriter extends BlockWriter{
    public final static String SPARSE_ARRAY_SIG =
        "[Lorg/apache/spark/mllib/linalg/SparseVector;";
 
-   public final static String internalMapSig =
-       "org/apache/spark/rdd/cl/CLWrapper$.map(ILscala/Function1;)V";
-
    private final String cvtBooleanToChar = "char ";
 
    private final String cvtBooleanArrayToCharStar = "char* ";
@@ -593,42 +590,6 @@ public abstract class KernelWriter extends BlockWriter{
 
             if (m != null) {
                write(m.getName());
-            } else if (_methodEntry.toString().equals(internalMapSig)) {
-              if (!(_methodCall.getArg(1) instanceof ConstructorCall)) {
-                  throw new RuntimeException("Expected lambda as second " + 
-                          "argument to CLWrapper.map");
-              }
-              final Instruction itersArg = _methodCall.getArg(0);
-              final ConstructorCall constructor = (ConstructorCall)_methodCall.getArg(1);
-              final MethodEntryInfo constructorEntry = constructor.getInvokeSpecial()
-                  .getConstantPoolMethodEntry();
-              MethodModel constructorModel = entryPoint.getCallTarget(constructorEntry, true, null);
-              final ClassModel classModel = constructorModel.getMethod().getClassModel();
-              final int stageId = entryPoint.getIdForParallelClassModel(classModel);
-              write(constructorModel.getName() + "(this->stage" + stageId);
-              /*
-               * The first argument (i=0) here is always a reference to the
-               * enclosing lambda (outer). Skip it. Calling the constructor on
-               * the shared stage object initializes its values from the
-               * spawning context.
-               */
-              for (int i = 0; i < constructorEntry.getStackConsumeCount(); i++) {
-                  write(", ");
-                  writeInstruction(constructor.getInvokeSpecial().getArg(i));
-              }
-              writeln(");");
-              // Signal the current stage we are entering
-              writeln("*(this->stage_ptr) = " + stageId + "; ");
-              // Signal the dimensionality of this stage
-              write("*(this->stage_size_ptr) = "); writeInstruction(itersArg); writeln(";");
-
-              // Barrier to signal other threads in block
-              writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
-
-              // Barrier to wait for other threads in block to finish parallel region
-              write("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE)");
-
-              isInternalMap = true;
             } else if (_methodEntry.toString().equals("java/lang/Object.<init>()V")) {
               /*
                * Do nothing if we're in a constructor calling the
@@ -853,7 +814,8 @@ public abstract class KernelWriter extends BlockWriter{
 
        final String mangledClassName = cm.getMangledClassName();
        newLine();
-       write("typedef struct __attribute__ ((packed)) " + mangledClassName + "_s{");
+       // write("typedef struct __attribute__ ((packed)) " + mangledClassName + "_s{");
+       write("struct __attribute__ ((packed)) " + mangledClassName + "_s{");
        in();
        newLine();
 
@@ -894,7 +856,8 @@ public abstract class KernelWriter extends BlockWriter{
        }
        out();
        newLine();
-       write("} " + mangledClassName + ";");
+       // write("} " + mangledClassName + ";");
+       write("};");
        newLine();
        newLine();
    }
@@ -1215,6 +1178,18 @@ public abstract class KernelWriter extends BlockWriter{
             final String mangled = cm.getMangledClassName();
             if (emitted.contains(mangled)) continue;
 
+            writeln("typedef struct __attribute__ ((packed)) " + mangled + "_s " + mangled + ";");
+            emitted.add(mangled);
+        }
+      }
+
+      emitted.clear();
+
+      for (String className : lexicalOrdering) {
+        for (final ClassModel cm : _entryPoint.getModelsForClassName(className)) {
+            final String mangled = cm.getMangledClassName();
+            if (emitted.contains(mangled)) continue;
+
             emitExternalObjectDef(cm);
             emitted.add(mangled);
         }
@@ -1227,15 +1202,6 @@ public abstract class KernelWriter extends BlockWriter{
       for (final String line : thisStruct) {
          write(line);
          writeln(";");
-      }
-      if (_entryPoint.checkIsWorkSharingKernel()) {
-          writeln("__local int * stage_ptr;");
-          writeln("__local int * stage_size_ptr;");
-          for (Map.Entry<Integer, ClassModel> lambda :
-                  _entryPoint.getInternalParallelClassModels().entrySet()) {
-              writeln("__local " + lambda.getValue().getMangledClassName() + " * stage" +
-                      lambda.getKey() + ";");
-          }
       }
       out();
       write("} This;");
@@ -1389,87 +1355,23 @@ public abstract class KernelWriter extends BlockWriter{
                  ClassModel cm = entryPoint.getModelFromObjectArrayFieldsClasses(
                      converted, new SignatureMatcher(sig));
                  convertedType = cm.getMangledClassName() + "* ";
-               } else if (descriptor.startsWith("[")) {
-                 convertedType = "scala_Array* ";
                } else {
                  convertedType = convertType(descriptor, true);
                }
+
                write(convertedType);
                write(lvi.getVariableName());
                alreadyHasFirstArg = true;
+
+               if (descriptor.startsWith("[")) {
+                   write(", int " + lvi.getVariableName() +
+                           BlockWriter.arrayLengthMangleSuffix);
+               }
             }
          }
          write(")");
          writeMethodBody(mm);
          newLine();
-      }
-
-      if (_entryPoint.checkIsWorkSharingKernel()) {
-          write("static void worker_thread_kernel(This *this) {");
-          in();
-          newLine();
-          writeln("bool done = false;");
-          for (Map.Entry<Integer, ClassModel> lambda :
-                  _entryPoint.getInternalParallelClassModels().entrySet()) {
-              int id = lambda.getKey();
-              ClassModel classModel = lambda.getValue();
-              writeln(classModel.getMangledClassName() + " stage" + id + ";");
-          }
-
-          {
-              write("while (!done) {");
-              in();
-              newLine();
-              {
-                  /*
-                   * Wait for thread 0 to signal all other threads in block with
-                   * current parallel stage.
-                   */
-                  writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
-                  write("switch (*(this->stage_ptr)) {");
-                  in();
-                  newLine();
-                  {
-                      write("case (0):"); // done signal
-                      in();
-                      newLine();
-                      writeln("done = true;");
-                      write("break;");
-                      out();
-                      newLine();
-
-                      for (Map.Entry<Integer, ClassModel> lambda :
-                              _entryPoint.getInternalParallelClassModels().entrySet()) {
-                          int id = lambda.getKey();
-                          ClassModel classModel = lambda.getValue();
-                          write("case (" + id + "):");
-                          in();
-                          newLine();
-                          writeln("stage" + id + " = *(this->stage" + id + ");");
-                          writeln("for (int i = get_local_id(0) - 32; i < " +
-                                  "*(this->stage_size_ptr); i += (get_local_size(0) - 32)) {");
-                          writeln(classModel.getMangledClassName() +
-                                  "__apply$mcVI$sp(&stage" + id + ", i);");
-                          writeln("}");
-                          /*
-                           * Group wait to ensure all threads finish parallel
-                           * region before master thread continues.
-                           */
-                          writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
-                      }
-                      out();
-                  }
-                  out();
-                  newLine();
-              }
-              write("}");
-              out();
-              newLine();
-          }
-          out();
-          writeln("}");
-          writeln("}");
-          newLine();
       }
 
       ScalaArrayParameter outParam = null;
@@ -1524,18 +1426,6 @@ public abstract class KernelWriter extends BlockWriter{
 
       writeln("This thisStruct;");
       writeln("This* this=&thisStruct;");
-      if (_entryPoint.checkIsWorkSharingKernel()) {
-          writeln("__local int stage;");
-          writeln("__local int stage_size;");
-          writeln("this->stage_ptr = &stage;");
-          writeln("this->stage_size_ptr = &stage_size;");
-          for (Map.Entry<Integer, ClassModel> lambda :
-                  _entryPoint.getInternalParallelClassModels().entrySet()) {
-              writeln("__local " + lambda.getValue().getMangledClassName() + " stage" +
-                      lambda.getKey() + ";");
-              writeln("this->stage" + lambda.getKey() + " = &stage" + lambda.getKey() + ";");
-          }
-      }
 
       if (!multiInput) {
           for (final String line : assigns) {
@@ -1555,11 +1445,7 @@ public abstract class KernelWriter extends BlockWriter{
         }
       }
 
-      if (_entryPoint.checkIsWorkSharingKernel()) {
-        write("for (int i = get_group_id(0); i < N; i += get_num_groups(0)) {");
-      } else {
-        write("for (int i = get_global_id(0); i < N; i += get_global_size(0)) {");
-      }
+    write("for (int i = get_global_id(0); i < N; i += get_global_size(0)) {");
       in();
       newLine();
       {
@@ -1588,23 +1474,20 @@ public abstract class KernelWriter extends BlockWriter{
            }
          }
 
-         if (_entryPoint.checkIsWorkSharingKernel()) {
-             write("if (get_local_id(0) < 32) {");
-             in();
-             newLine();
-             writeln("if (get_local_id(0) == 0) {");
-         }
-
          if (outParam.getClazz() != null) {
            write("__global " + outParam.getType() + "* result = " +
                _entryPoint.getMethodModel().getName() + "(this");
          } else {
-           write(outParam.getName() + "[i] = " + _entryPoint.getMethodModel().getName() + "(this");
+           write(outParam.getName() + "[i] = " +
+                   _entryPoint.getMethodModel().getName() + "(this");
          }
 
          for (ScalaArrayParameter p : params) {
            if (p.getDir() == ScalaParameter.DIRECTION.IN) {
-             if (p.getClazz() == null) {
+             if (p.getType().endsWith("[]")) {
+               write(", " + p.getName() + " + " + p.getName() +
+                       "_offsets[i], " + p.getName() + "_sizes[i]");
+             } else if (p.getClazz() == null) {
                write(", " + p.getName() + "[i]");
              } else if (p.getClazz().getName().equals("scala.Tuple2")) {
                write(", my_" + p.getName());
@@ -1615,11 +1498,6 @@ public abstract class KernelWriter extends BlockWriter{
          }
          write(");");
          newLine();
-
-         if (_entryPoint.checkIsWorkSharingKernel()) {
-             writeln("*(this->stage_ptr) = 0;");
-             writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
-         }
 
          if (_entryPoint.requiresHeap()) {
            write("if (!this->alloc_failed) {");
@@ -1632,29 +1510,8 @@ public abstract class KernelWriter extends BlockWriter{
            }
            out();
            newLine();
-           if (_entryPoint.checkIsWorkSharingKernel()) {
-               writeln("}");
-           } else {
-               write("}");
-           }
+           write("}");
          }
-
-         if (_entryPoint.checkIsWorkSharingKernel()) {
-             write("}");
-             out();
-             newLine();
-             write("} else {");
-             in();
-             newLine();
-             {
-                 write("worker_thread_kernel(this);");
-             }
-             out();
-             newLine();
-             writeln("}");
-             writeln("barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);");
-         }
-
       }
       out();
       newLine();

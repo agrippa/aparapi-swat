@@ -579,7 +579,7 @@ public abstract class BlockWriter{
              assert(dim == 1);
              final String arrayName = ((LocalVariableConstIndexLoad)load)
                  .getLocalVariableInfo().getVariableName();
-             write(arrayName + "->size");
+             write(arrayName + BlockWriter.arrayLengthMangleSuffix);
          }
       } else if (_instruction instanceof AssignToField) {
          final AssignToField assignedField = (AssignToField) _instruction;

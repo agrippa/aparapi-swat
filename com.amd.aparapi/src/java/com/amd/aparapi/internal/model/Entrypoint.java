@@ -72,11 +72,6 @@ public class Entrypoint implements Cloneable {
 
    private ClassModel classModel;
 
-   private boolean isWorkSharingKernel = false;
-   public boolean checkIsWorkSharingKernel() {
-       return isWorkSharingKernel;
-   }
-
    private int internalParallelClassModelsCount = 1;
    private final Map<Integer, ClassModel> internalParallelClassModels =
        new HashMap<Integer, ClassModel>();
@@ -772,66 +767,6 @@ public class Entrypoint implements Cloneable {
        return false;
    }
 
-   // invokeInstruction is the call to CLWrapper.map.
-   private ClassModelMethod handleInternalMapCall(
-           final I_INVOKEVIRTUAL invokeInstruction,
-           MethodModel currMethodModel,
-           Map<ClassModelMethod, MethodModel> methodMap)
-               throws AparapiException {
-       isWorkSharingKernel = true;
-
-       /*
-        * First argument to CLWrapper.map is the dimensionality of this loop
-        * (i.e. # of iterations).
-        */
-       Instruction loopDimensionality = invokeInstruction.getArg(0);
-       /*
-        * Expect the second argument to CLWrapper.map to be produced by calling
-        * the constructor of the lambda being passed as the body of the parallel
-        * loop
-        */
-       if (!(invokeInstruction.getArg(1) instanceof ConstructorCall)) {
-           throw new RuntimeException("Expected lambda as second argument to " +
-                   "CLWrapper.map");
-       }
-       ConstructorCall lambdaConstructor = (ConstructorCall)invokeInstruction
-           .getArg(1);
-       /*
-        * Get the actual call to <init> from the composite ConstructorCall
-        * instruction
-        */
-       I_INVOKESPECIAL actual = lambdaConstructor.getInvokeSpecial();
-       final MethodEntryInfo parallelInitMethodEntry = actual.getConstantPoolMethodEntry();
-       final String methodClass = parallelInitMethodEntry.getClassName();
-       final String methodName = parallelInitMethodEntry.getMethodName();
-
-       /*
-        * Add the containing class for the parallel lambda class, which may
-        * contain fields that are referenced from the lambda.
-        */
-       addClass(methodModel.getMethod().getClassModel()
-               .getClassWeAreModelling().getName(),
-               new String[0]);
-       // Add the internal parallel lambda
-       final String parallelClassName = methodClass.replace('/', '.');
-       final ClassModel parallelClassModel =
-           addClass(parallelClassName, new String[0]);
-       final ClassModelMethod constructorMethodModel = resolveCalledMethod(
-               actual.getConstantPoolMethodEntry(), true, false,
-               parallelClassModel, getCallInstance(actual));
-       if (constructorMethodModel == null) {
-           throw new RuntimeException("constructor of lambda must be non-null");
-       }
-       final MethodModel constructorTarget = new LoadedMethodModel(constructorMethodModel, this);
-       methodMap.put(constructorMethodModel, constructorTarget);
-       currMethodModel.getCalledMethods().add(constructorTarget);
-
-       addParallelClassModel(parallelClassModel);
-       final ClassModelMethod m = parallelClassModel.getMethod(
-               "apply$mcVI$sp", "(I)V");
-       return m;
-   }
-
    private static String getMethodEntryName(MethodEntry methodEntry) {
        return methodEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8();
    }
@@ -921,17 +856,11 @@ public class Entrypoint implements Cloneable {
       for (final MethodCall methodCall : methodModel.getMethodCalls()) {
          final MethodEntryInfo methodEntry = methodCall.getConstantPoolMethodEntry();
 
-         final ClassModelMethod m;
-         if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
-             m = handleInternalMapCall((I_INVOKEVIRTUAL)methodCall, methodModel,
-                     methodMap);
-         } else {
-             m = resolveCalledMethod(
-                     methodCall.getConstantPoolMethodEntry(),
-                     methodCall instanceof I_INVOKESPECIAL,
-                     methodCall instanceof I_INVOKESTATIC, classModel,
-                     getCallInstance(methodCall));
-         }
+         final ClassModelMethod m = resolveCalledMethod(
+                 methodCall.getConstantPoolMethodEntry(),
+                 methodCall instanceof I_INVOKESPECIAL,
+                 methodCall instanceof I_INVOKESTATIC, classModel,
+                 getCallInstance(methodCall));
          if ((m != null) && !methodMap.keySet().contains(m) && !noCL(m)) {
              final MethodModel target = new LoadedMethodModel(m, this);
              methodMap.put(m, target);
@@ -950,15 +879,10 @@ public class Entrypoint implements Cloneable {
                final String methodName = methodEntry.getMethodName();
                final String methodClass = methodEntry.getClassName();
 
-               final ClassModelMethod m;
-               if (methodEntry.toString().equals(KernelWriter.internalMapSig)) {
-                   m = handleInternalMapCall((I_INVOKEVIRTUAL)methodCall, mm, methodMap);
-               } else {
-                   m = resolveCalledMethod(methodEntry,
-                           methodCall instanceof I_INVOKESPECIAL,
-                           methodCall instanceof I_INVOKESTATIC, classModel,
-                           getCallInstance(methodCall));
-               }
+               final ClassModelMethod m = resolveCalledMethod(methodEntry,
+                       methodCall instanceof I_INVOKESPECIAL,
+                       methodCall instanceof I_INVOKESTATIC, classModel,
+                       getCallInstance(methodCall));
 
                if (m != null && !noCL(m)) {
                   MethodModel target = null;
@@ -1097,9 +1021,7 @@ public class Entrypoint implements Cloneable {
                      LocalVariableConstIndexLoad accessLocal = (LocalVariableConstIndexLoad)child;
                      final String arrayName = accessLocal.getLocalVariableInfo()
                          .getVariableName();
-                     System.err.println("Local array length access on \"" + arrayName + "\"");
                   } else {
-                     System.err.println(child + " " + child.getClass().getName());
                      throw new ClassParseException(
                              ClassParseException.TYPE.LOCALARRAYLENGTHACCESS);
                   }
