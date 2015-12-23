@@ -1472,6 +1472,14 @@ public abstract class KernelWriter extends BlockWriter{
       newLine();
       {
          boolean first = true;
+         if (multiInput) {
+            for (final String line : argLines) {
+              if (!first) write(", ");
+              write(line);
+              first = false;
+            }
+         }
+
          for (ScalaArrayParameter p : params) {
             if (first) {
                first = false;
@@ -1491,8 +1499,12 @@ public abstract class KernelWriter extends BlockWriter{
             }
          }
 
-         for (final String line : argLines) {
-           write(", "); write(line);
+         if (!multiInput) {
+            for (final String line : argLines) {
+              if (!first) write(", ");
+              write(line);
+              first = false;
+            }
          }
 
          write(", int N, int iter");
