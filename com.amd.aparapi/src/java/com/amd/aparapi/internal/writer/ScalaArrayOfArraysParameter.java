@@ -10,7 +10,7 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
         }
     }
 
-    private final String primitiveElementType;
+    public final String primitiveElementType;
 
     public ScalaArrayOfArraysParameter(String type, String name,
             ScalaParameter.DIRECTION dir, String primitiveElementType) {
@@ -37,7 +37,7 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
             throw new RuntimeException();
         }
 
-        return "__global " + primitiveElementType + "** restrict " + name +
+        return "__global int * restrict " + name +
             ", __global int * restrict " + name + "_iters";
     }
 

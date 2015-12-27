@@ -1017,7 +1017,10 @@ public abstract class KernelWriter extends BlockWriter{
                write(outParam.getName() + "[i] = *" + varname + ";");
            }
        } else if (outParam instanceof ScalaArrayOfArraysParameter) {
-           write(outParam.getName() + "_iters[i] = iter;");
+           writeln(outParam.getName() + "_iters[i] = iter;");
+           writeln(outParam.getName() + "[i] = " +
+                   "((__global char *)result) - " +
+                   "((__global char *)this->heap);");
        }
    }
 
@@ -1501,6 +1504,11 @@ public abstract class KernelWriter extends BlockWriter{
          if (outParam.getClazz() != null) {
            write("__global " + outParam.getType() + "* result = " +
                _entryPoint.getMethodModel().getName() + "(this");
+         } else if (outParam instanceof ScalaArrayOfArraysParameter) {
+           final String primitiveType =
+               ((ScalaArrayOfArraysParameter)outParam).primitiveElementType;
+           write("__global " + primitiveType + "* result = " +
+                   _entryPoint.getMethodModel().getName() + "(this");
          } else {
            write(outParam.getName() + "[i] = " +
                    _entryPoint.getMethodModel().getName() + "(this");
