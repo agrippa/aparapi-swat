@@ -134,12 +134,20 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
         return sb.toString();
     }
 
+    private static String javaPrimitiveToCLPrimitive(String javaPrimitive) {
+        if (javaPrimitive.equals("byte")) {
+            return "char";
+        } else {
+            return javaPrimitive;
+        }
+    }
+
     public static ScalaArrayParameter createArrayParameterFor(String type,
             String name, DIRECTION dir) {
         type = type.trim();
         if (type.endsWith(" []")) {
             // type = "double []"
-            final String elementType = type.split(" ")[0];
+            final String elementType = javaPrimitiveToCLPrimitive(type.split(" ")[0]);
             return new ScalaArrayOfArraysParameter(type, name, dir, elementType);
         } else if (type.equals(KernelWriter.TUPLE2_CLASSNAME)) {
             return new ScalaTuple2ArrayParameter(type, name, dir);
@@ -157,7 +165,7 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
         type = type.trim();
         if (type.endsWith(" []")) {
             // type = "double []"
-            final String elementType = type.split(" ")[0];
+            final String elementType = javaPrimitiveToCLPrimitive(type.split(" ")[0]);
             return new ScalaArrayOfArraysParameter(type, clazz, name, dir, elementType);
         } else if (type.equals(KernelWriter.TUPLE2_CLASSNAME)) {
             return new ScalaTuple2ArrayParameter(type, clazz, name, dir);

@@ -49,6 +49,8 @@ public class ScalaArrayClassModel extends HardCodedClassModel {
             typeName = "float";
         } else if (eleDesc.equals("D")) {
             typeName = "double";
+        } else if (eleDesc.equals("B")) {
+            typeName = "char";
         } else {
             throw new RuntimeException("eleDesc = " + eleDesc);
         }

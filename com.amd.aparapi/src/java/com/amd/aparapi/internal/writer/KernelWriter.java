@@ -1043,7 +1043,7 @@ public abstract class KernelWriter extends BlockWriter{
 
          if (multiInput) {
             if (signature.equals("[D") || signature.equals("[F") ||
-                    signature.equals("[I")) {
+                    signature.equals("[I") || signature.equals("[B")) {
                 final String primitiveType;
                 if (signature.equals("[D")) {
                     primitiveType = "double";
@@ -1051,6 +1051,8 @@ public abstract class KernelWriter extends BlockWriter{
                     primitiveType = "float";
                 } else if (signature.equals("[I")) {
                     primitiveType = "int";
+                } else if (signature.equals("[B")) {
+                    primitiveType = "char";
                 } else {
                     throw new RuntimeException("Unsupported: \"" + signature +
                             "\"");
@@ -1060,7 +1062,7 @@ public abstract class KernelWriter extends BlockWriter{
                         field.getName(), ScalaParameter.DIRECTION.IN,
                         primitiveType);
             } else if (signature.equals("I") || signature.equals("F") ||
-                    signature.equals("D")) {
+                    signature.equals("D") || signature.equals("[B")) {
                 param = new ScalaPrimitiveOrObjectArrayParameter("[" + signature,
                         field.getName(), ScalaParameter.DIRECTION.IN);
             } else {
@@ -1107,19 +1109,18 @@ public abstract class KernelWriter extends BlockWriter{
             String lenName = field.getName() + BlockWriter.arrayLengthMangleSuffix + suffix;
 
             lenStructLine.append("int " + lenName);
+            thisStruct.add(lenStructLine.toString());
 
             if (!multiInput) {
                lenAssignLine.append("this->");
                lenAssignLine.append(lenName);
                lenAssignLine.append(" = ");
                lenAssignLine.append(lenName);
+               assigns.add(lenAssignLine.toString());
+
+               lenArgLine.append("int " + lenName);
+               argLines.add(lenArgLine.toString());
             }
-
-            lenArgLine.append("int " + lenName);
-
-            assigns.add(lenAssignLine.toString());
-            argLines.add(lenArgLine.toString());
-            thisStruct.add(lenStructLine.toString());
          }
       }
 
