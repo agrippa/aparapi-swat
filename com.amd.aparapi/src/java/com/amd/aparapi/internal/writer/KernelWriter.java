@@ -1036,24 +1036,45 @@ public abstract class KernelWriter extends BlockWriter{
          String signature = field.getDescriptor();
 
          ScalaParameter param = null;
-         if (signature.equals("[Lorg/apache/spark/mllib/linalg/DenseVector")) {
-             param = new ScalaDenseVectorArrayParameter(signature,
-                     field.getName(), ScalaParameter.DIRECTION.IN);
-         } else if (signature.equals("[Lorg/apache/spark/mllib/linalg/SparseVector")) {
-             param = new ScalaSparseVectorArrayParameter(signature,
-                     field.getName(), ScalaParameter.DIRECTION.IN);
-         } else if (signature.startsWith("[Lscala/Tuple2")) {
-             param = new ScalaTuple2ArrayParameter(signature, field.getName(),
-                     ScalaParameter.DIRECTION.IN);
-         } else if (multiInput && (signature.equals("[I") || signature.equals("[F") ||
-                 signature.equals("[D"))) {
-             param = new ScalaArrayOfArraysParameter(signature, field.getName(),
-                     ScalaParameter.DIRECTION.IN);
-         } else if (signature.startsWith("[")) {
-             param = new ScalaPrimitiveOrObjectArrayParameter(signature,
-                     field.getName(), ScalaParameter.DIRECTION.IN);
+
+         if (multiInput) {
+            if (signature.equals("[D") || signature.equals("[F") || signature.equals("[I")) {
+                final String primitiveType;
+                if (signature.equals("[D")) {
+                    primitiveType = "double";
+                } else if (signature.equals("[F")) {
+                    primitiveType = "float";
+                } else if (signature.equals("[I")) {
+                    primitiveType = "int";
+                } else {
+                    throw new RuntimeException("Unsupported: \"" + signature + "\"");
+                }
+
+                param = new ScalaArrayOfArraysParameter(signature,
+                        field.getName(), ScalaParameter.DIRECTION.IN,
+                        primitiveType);
+            } else if (signature.equals("I") || signature.equals("F") || signature.equals("D")) {
+                param = new ScalaPrimitiveOrObjectArrayParameter("[" + signature,
+                        field.getName(), ScalaParameter.DIRECTION.IN);
+            } else {
+               throw new RuntimeException("Unsupported: \"" + signature + "\"");
+            }
          } else {
-             param = new ScalaScalarParameter(signature, field.getName());
+            if (signature.equals("[Lorg/apache/spark/mllib/linalg/DenseVector")) {
+                param = new ScalaDenseVectorArrayParameter(signature,
+                        field.getName(), ScalaParameter.DIRECTION.IN);
+            } else if (signature.equals("[Lorg/apache/spark/mllib/linalg/SparseVector")) {
+                param = new ScalaSparseVectorArrayParameter(signature,
+                        field.getName(), ScalaParameter.DIRECTION.IN);
+            } else if (signature.startsWith("[Lscala/Tuple2")) {
+                param = new ScalaTuple2ArrayParameter(signature, field.getName(),
+                        ScalaParameter.DIRECTION.IN);
+            } else if (signature.startsWith("[")) {
+                param = new ScalaPrimitiveOrObjectArrayParameter(signature,
+                        field.getName(), ScalaParameter.DIRECTION.IN);
+            } else {
+                param = new ScalaScalarParameter(signature, field.getName());
+            }
          }
 
          // check the suffix
@@ -1080,17 +1101,19 @@ public abstract class KernelWriter extends BlockWriter{
 
             lenStructLine.append("int " + lenName);
 
-            lenAssignLine.append("this->");
-            lenAssignLine.append(lenName);
-            lenAssignLine.append(" = ");
-            lenAssignLine.append(lenName);
+            if (!multiInput) {
+               lenAssignLine.append("this->");
+               lenAssignLine.append(lenName);
+               lenAssignLine.append(" = ");
+               lenAssignLine.append(lenName);
+            }
 
             lenArgLine.append("int " + lenName);
 
             assigns.add(lenAssignLine.toString());
             argLines.add(lenArgLine.toString());
             thisStruct.add(lenStructLine.toString());
-        }
+         }
       }
 
       if (_entryPoint.requiresHeap()) {

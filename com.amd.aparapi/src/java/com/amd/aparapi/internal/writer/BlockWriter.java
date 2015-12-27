@@ -547,7 +547,7 @@ public abstract class BlockWriter{
             if (accessInstanceField instanceof CloneInstruction) {
                accessInstanceField = ((CloneInstruction) accessInstanceField).getReal();
             }
-            if (!(accessInstanceField instanceof I_ALOAD_0)) {
+            if (accessInstanceField != null && !(accessInstanceField instanceof I_ALOAD_0)) {
                writeInstruction(accessInstanceField);
                write(".");
             } else {
