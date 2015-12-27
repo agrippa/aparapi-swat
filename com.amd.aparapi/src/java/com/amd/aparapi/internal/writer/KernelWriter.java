@@ -1042,7 +1042,8 @@ public abstract class KernelWriter extends BlockWriter{
          ScalaParameter param = null;
 
          if (multiInput) {
-            if (signature.equals("[D") || signature.equals("[F") || signature.equals("[I")) {
+            if (signature.equals("[D") || signature.equals("[F") ||
+                    signature.equals("[I")) {
                 final String primitiveType;
                 if (signature.equals("[D")) {
                     primitiveType = "double";
@@ -1051,13 +1052,15 @@ public abstract class KernelWriter extends BlockWriter{
                 } else if (signature.equals("[I")) {
                     primitiveType = "int";
                 } else {
-                    throw new RuntimeException("Unsupported: \"" + signature + "\"");
+                    throw new RuntimeException("Unsupported: \"" + signature +
+                            "\"");
                 }
 
                 param = new ScalaArrayOfArraysParameter(signature,
                         field.getName(), ScalaParameter.DIRECTION.IN,
                         primitiveType);
-            } else if (signature.equals("I") || signature.equals("F") || signature.equals("D")) {
+            } else if (signature.equals("I") || signature.equals("F") ||
+                    signature.equals("D")) {
                 param = new ScalaPrimitiveOrObjectArrayParameter("[" + signature,
                         field.getName(), ScalaParameter.DIRECTION.IN);
             } else {
@@ -1121,11 +1124,6 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       if (_entryPoint.requiresHeap()) {
-        argLines.add("__global void * restrict heap");
-        argLines.add("__global uint * restrict free_index");
-        argLines.add("unsigned int heap_size");
-        argLines.add("__global int * restrict processing_succeeded");
-
         assigns.add("this->heap = heap");
         assigns.add("this->free_index = free_index");
         assigns.add("this->heap_size = heap_size");
@@ -1442,6 +1440,11 @@ public abstract class KernelWriter extends BlockWriter{
             }
          }
 
+         if (_entryPoint.requiresHeap()) {
+            write(", __global void * restrict heap, __global uint * " +
+                    "restrict free_index, unsigned int heap_size, __global " +
+                    "int * restrict processing_succeeded");
+         }
          write(", int N, int iter");
       }
       write(") {");
