@@ -58,9 +58,15 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
         }
 
         if (writer.multiInput) {
-            return "this->" + name + " = " + name + " + " + name +
-                "_offsets[i]; this->" + name +
-                BlockWriter.arrayLengthMangleSuffix + " = " + name + "_sizes[i]";
+            final StringBuilder builder = new StringBuilder();
+            builder.append("this->" + name + " = " + name + " + " + name +
+                   "_offsets[i]");
+            if (writer.getEntryPoint().getArrayFieldArrayLengthUsed().contains(name)) {
+              builder.append("; this->" + name +
+                      BlockWriter.arrayLengthMangleSuffix + " = " + name +
+                      "_sizes[i]");
+            }
+            return builder.toString();
         } else {
             throw new UnsupportedOperationException();
         }
