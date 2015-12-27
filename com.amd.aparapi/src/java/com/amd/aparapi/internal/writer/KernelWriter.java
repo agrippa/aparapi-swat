@@ -999,7 +999,6 @@ public abstract class KernelWriter extends BlockWriter{
 
    private void writeOutputUpdate(String varname, ScalaArrayParameter outParam, boolean topLevel) throws ClassNotFoundException {
        if (outParam.getClazz() != null) {
-
            if (outParam.getClazz().getName().equals(TUPLE2_CLASSNAME)) {
                writeTuple2MemberUpdate(varname, 0, outParam, topLevel);
                newLine();
@@ -1017,6 +1016,8 @@ public abstract class KernelWriter extends BlockWriter{
            } else {
                write(outParam.getName() + "[i] = *" + varname + ";");
            }
+       } else if (outParam instanceof ScalaArrayOfArraysParameter) {
+           write(outParam.getName() + "_iters[i] = iter;");
        }
    }
 

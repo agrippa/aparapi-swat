@@ -33,7 +33,12 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
 
     @Override
     public String getOutputParameterString(KernelWriter writer) {
-        throw new UnsupportedOperationException();
+        if (dir != DIRECTION.OUT) {
+            throw new RuntimeException();
+        }
+
+        return "__global " + primitiveElementType + "** restrict " + name +
+            ", __global int * restrict " + name + "_iters";
     }
 
     @Override
