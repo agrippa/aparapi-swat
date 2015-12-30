@@ -474,75 +474,76 @@ public class Entrypoint implements Cloneable {
            final Instruction callInstance, final MethodEntryInfo _methodEntry)
            throws AparapiException {
       final String methodsActualClassName = _methodEntry.getClassName().replace('/', '.');
+      System.err.println("resolveAccessorCandidate = " + methodsActualClassName + " " + _methodEntry.getMethodName() + " callInstance=" + callInstance);
 
-      if (callInstance != null) {
-         if (callInstance instanceof AccessArrayElement) {
-            final AccessArrayElement arrayAccess = (AccessArrayElement) callInstance;
-            final Instruction refAccess = arrayAccess.getArrayRef();
-            //if (refAccess instanceof I_GETFIELD) {
+      if (callInstance != null &&
+              !methodsActualClassName.equals("java.lang.Object") &&
+              !methodsActualClassName.equals("scala.Tuple2") &&
+              !methodsActualClassName.startsWith("scala.math") &&
+              (!methodsActualClassName.startsWith("org.apache.spark") || methodsActualClassName.startsWith("org.apache.spark.rdd.cl"))) {
+         // if (callInstance instanceof AccessArrayElement) {
 
-               // It is a call from a member obj array element
-               if (logger.isLoggable(Level.FINE)) {
-                  logger.fine("Looking for class in accessor call: " +
-                          methodsActualClassName);
-               }
+            // It is a call from a member obj array element
+            if (logger.isLoggable(Level.FINE)) {
+               logger.fine("Looking for class in accessor call: " +
+                       methodsActualClassName);
+            }
 
-               final String methodName = _methodEntry.getMethodName();
-               final String methodDesc = _methodEntry.getMethodSig();
-               final String returnType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
-               HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
-                   @Override
-                   public void checkPreconditions(List<HardCodedClassModel> classModels) {
-                   }
+            final String methodName = _methodEntry.getMethodName();
+            final String methodDesc = _methodEntry.getMethodSig();
+            final String returnType = methodDesc.substring(methodDesc.lastIndexOf(')') + 1);
+            HardCodedClassModelMatcher matcher = new HardCodedClassModelMatcher() {
+                @Override
+                public void checkPreconditions(List<HardCodedClassModel> classModels) {
+                }
 
-                   @Override
-                   public boolean matches(HardCodedClassModel model) {
-                       // TODO use _methodCall and _methodEntry?
-                       String modelClassName = model.getClassWeAreModelling().getName();
-                       if (modelClassName.equals(
-                                   KernelWriter.DENSEVECTOR_CLASSNAME)) {
-                         return true;
-                       } else if (modelClassName.equals(
-                                   KernelWriter.SPARSEVECTOR_CLASSNAME)) {
-                         return true;
-                       } else if (modelClassName.equals(
-                                   KernelWriter.TUPLE2_CLASSNAME)) {
-                         TypeParameters params = model.getTypeParamDescs();
-                         if (methodName.startsWith("_1")) {
-                           String first = params.get(0);
-                           if (returnType.length() == 1) {
-                             // Primitive
-                             return returnType.equals(first);
-                           } else if (returnType.startsWith("L")) {
-                             // Object
-                             return first.startsWith("L"); // #*&$% type erasure
-                           } else {
-                             throw new RuntimeException(returnType);
-                           }
-                         } else if (methodName.startsWith("_2")) {
-                           String second = params.get(1);
-                           if (returnType.length() == 1) {
-                             // Primitive
-                             return returnType.equals(second);
-                           } else if (returnType.startsWith("L")) {
-                             // Object
-                             return second.startsWith("L"); // #*&$% type erasure
-                           } else {
-                             throw new RuntimeException(returnType);
-                           }
-                         }
-                       }
-                       return false;
-                   }
-               };
+                @Override
+                public boolean matches(HardCodedClassModel model) {
+                    // TODO use _methodCall and _methodEntry?
+                    String modelClassName = model.getClassWeAreModelling().getName();
+                    if (modelClassName.equals(
+                                KernelWriter.DENSEVECTOR_CLASSNAME)) {
+                      return true;
+                    } else if (modelClassName.equals(
+                                KernelWriter.SPARSEVECTOR_CLASSNAME)) {
+                      return true;
+                    } else if (modelClassName.equals(
+                                KernelWriter.TUPLE2_CLASSNAME)) {
+                      TypeParameters params = model.getTypeParamDescs();
+                      if (methodName.startsWith("_1")) {
+                        String first = params.get(0);
+                        if (returnType.length() == 1) {
+                          // Primitive
+                          return returnType.equals(first);
+                        } else if (returnType.startsWith("L")) {
+                          // Object
+                          return first.startsWith("L"); // #*&$% type erasure
+                        } else {
+                          throw new RuntimeException(returnType);
+                        }
+                      } else if (methodName.startsWith("_2")) {
+                        String second = params.get(1);
+                        if (returnType.length() == 1) {
+                          // Primitive
+                          return returnType.equals(second);
+                        } else if (returnType.startsWith("L")) {
+                          // Object
+                          return second.startsWith("L"); // #*&$% type erasure
+                        } else {
+                          throw new RuntimeException(returnType);
+                        }
+                      }
+                    }
+                    return false;
+                }
+            };
 
-               final ClassModel memberClassModel = getOrUpdateAllClassAccesses(
-                       methodsActualClassName, matcher);
+            final ClassModel memberClassModel = getOrUpdateAllClassAccesses(
+                    methodsActualClassName, matcher);
 
-               // false = no invokespecial allowed here
-               return memberClassModel.getMethod(_methodEntry, false);
-            //}
-         }
+            // false = no invokespecial allowed here
+            return memberClassModel.getMethod(_methodEntry, false);
+         // }
       }
       return null;
    }
@@ -1404,16 +1405,25 @@ public class Entrypoint implements Cloneable {
 
    public static String[] parseTypeParameters(String fullDesc) {
        final int openBraceIndex = fullDesc.indexOf("<");
-       if (openBraceIndex == -1) {
-           throw new RuntimeException("Expected open brace in " + fullDesc);
-       }
        final int closeBraceIndex = fullDesc.indexOf(">");
-       if (closeBraceIndex == -1) {
-           throw new RuntimeException("Expected close brace in " + fullDesc);
+       if (openBraceIndex != -1 && closeBraceIndex != -1) {
+           final String types = fullDesc.substring(openBraceIndex + 1, closeBraceIndex);
+           final String[] typesArr = types.split(",");
+           return typesArr;
+       } else {
+           // e.g. scala.Tuple2$mcID$sp
+           final String tuple2Prefix = "scala.Tuple2$mc";
+           if (fullDesc.startsWith(tuple2Prefix)) {
+               String primitiveDescriptors = fullDesc.substring(tuple2Prefix.length());
+               primitiveDescriptors = primitiveDescriptors.substring(0, 2);
+               final String[] typesArr = new String[2];
+               typesArr[0] = Character.toString(primitiveDescriptors.charAt(0));
+               typesArr[1] = Character.toString(primitiveDescriptors.charAt(1));
+               return typesArr;
+           } else {
+               throw new RuntimeException("Expected open and close brace in \"" + fullDesc + "\"");
+           }
        }
-       final String types = fullDesc.substring(openBraceIndex + 1, closeBraceIndex);
-       final String[] typesArr = types.split(",");
-       return typesArr;
    }
 
    private static boolean descAndModelMatches(String desc, ClassModel cm) {

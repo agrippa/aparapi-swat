@@ -66,7 +66,7 @@ import com.amd.aparapi.internal.instruction.Instruction;
       UNSUPPORTEDBYTECODE("This bytecode is not supported"), //
       OPERANDCONSUMERPRODUCERMISSMATCH("Detected an non-reducable operand consumer/producer mismatch"), //
       BADGETTERTYPEMISMATCH("Getter return type does not match field var type"), //
-      BADGETTERNAMEMISMATCH("Getter name does not match fiels name"), //
+      BADGETTERNAMEMISMATCH("Getter name does not match field name"), //
       BADGETTERNAMENOTFOUND("Getter not found"), //
       BADSETTERTYPEMISMATCH("Setter arg type does not match field var type"), //
       EXCEPTION("We don't support catch blocks"), //

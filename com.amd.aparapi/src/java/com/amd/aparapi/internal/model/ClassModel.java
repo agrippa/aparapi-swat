@@ -2825,6 +2825,7 @@ public abstract class ClassModel {
    public static final int FLOAT = 1;
    public static final int DOUBLE = 2;
    public static final int POINTER = 3;
+   public static final int LONG = 4;
 
    protected int[] types = null;
    protected int[] sizes = null;
@@ -2850,6 +2851,10 @@ public abstract class ClassModel {
                case I:
                    types[index] = INT;
                    sizes[index] = 4;
+                   break;
+               case J:
+                   types[index] = LONG;
+                   sizes[index] = 8;
                    break;
                case F:
                    types[index] = FLOAT;

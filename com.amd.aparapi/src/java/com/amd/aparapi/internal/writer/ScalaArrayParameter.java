@@ -42,7 +42,7 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
             String[] tokens = params.split(",");
             for (int i = 0; i < tokens.length; i++) {
                 String t = tokens[i];
-                if (t.equals("I") || t.equals("F") || t.equals("D")) {
+                if (t.equals("I") || t.equals("F") || t.equals("D") || t.equals("B")) {
                     this.typeParameterDescs.add(t);
                     this.typeParameterIsObject.add(false);
                 } else {
@@ -57,6 +57,8 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
                 this.type = "double";
             } else if (eleSig.equals("F")) {
                 this.type = "float";
+            } else if (eleSig.equals("B")) {
+                this.type = "char";
             } else if (eleSig.startsWith("L")) {
                 this.type = eleSig.substring(1, eleSig.length() - 1).replace('/', '.');
             } else {
