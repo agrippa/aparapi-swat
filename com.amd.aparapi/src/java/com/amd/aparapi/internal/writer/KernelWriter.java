@@ -106,6 +106,7 @@ public abstract class KernelWriter extends BlockWriter{
    private int countAllocs = 0;
 
    private String currentReturnType = null;
+   private MethodModel currentMethodModel = null;
 
    private Set<MethodModel> mayFailHeapAllocation = null;
 
@@ -224,12 +225,16 @@ public abstract class KernelWriter extends BlockWriter{
    @Override public String getAllocCheck() {
      assert(currentReturnType != null);
      final String nullReturn;
-     if (currentReturnType.startsWith("L") || currentReturnType.startsWith("[")) {
+     if (currentReturnType.startsWith("L") ||
+             currentReturnType.startsWith("[")) {
        nullReturn = "0x0";
-     } else if (currentReturnType.equals("I") || currentReturnType.equals("L") || currentReturnType.equals("F") || currentReturnType.equals("D")) {
+     } else if (currentReturnType.equals("I") ||
+             currentReturnType.equals("L") || currentReturnType.equals("F") ||
+             currentReturnType.equals("D")) {
        nullReturn = "0";
      } else {
-       throw new RuntimeException("Unsupported type descriptor " + currentReturnType);
+       throw new RuntimeException("Unsupported type descriptor " +
+               currentReturnType);
      }
 
      String checkStr = "if (this->alloc_failed) { return (" + nullReturn + "); }";
@@ -264,6 +269,9 @@ public abstract class KernelWriter extends BlockWriter{
                break;
            case (10): // INT
                typeStr = "int";
+               break;
+           case (8): // BYTE
+               typeStr = "char";
                break;
            default:
                throw new RuntimeException("Unsupported type=" + newArray.getType());
@@ -516,13 +524,21 @@ public abstract class KernelWriter extends BlockWriter{
                target = target.getPrevPC();
              }
 
-             if (target instanceof LocalVariableConstIndexLoad) {
-               LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)target;
+             if (target instanceof AccessLocalVariable) {
+               AccessLocalVariable ld = (AccessLocalVariable)target;
                LocalVariableInfo info = ld.getLocalVariableInfo();
-               if (!info.isArray()) {
-                 // if (isObjectField) write("(&(");
-                 write(info.getVariableName() + "->" + getterFieldName);
-                 // if (isObjectField) write("))");
+               if (info != null) {
+                 if (!info.isArray()) {
+                   // if (isObjectField) write("(&(");
+                   write(info.getVariableName() + "->" + getterFieldName);
+                   // if (isObjectField) write("))");
+                   return false;
+                 }
+               } else {
+                 int index = ld.getLocalVariableTableIndex();
+                 final String varname = BlockWriter.getAnonymousVariableName(
+                         this.currentMethodModel, index);
+                 write(varname + "->" + getterFieldName);
                  return false;
                }
              } else if (target instanceof VirtualMethodCall) {
@@ -585,6 +601,7 @@ public abstract class KernelWriter extends BlockWriter{
             scalaMapped.add("scala/math/package$.pow(DD)D");
             scalaMapped.add("scala/math/package$.exp(D)D");
             scalaMapped.add("scala/math/package$.log(D)D");
+            scalaMapped.add("scala/math/package$.abs(I)I");
 
             boolean isScalaMapped = scalaMapped.contains(_methodEntry.toString());
 
@@ -742,7 +759,26 @@ public abstract class KernelWriter extends BlockWriter{
                              (!isIntrinsic)) || (arg != 0)) {
                      write(", ");
                  }
+                 Instruction argInsn = _methodCall.getArg(arg);
                  writeInstruction(_methodCall.getArg(arg));
+                 if (argInsn instanceof AccessLocalVariable) {
+                     AccessLocalVariable localAccess = (AccessLocalVariable)argInsn;
+                     LocalVariableInfo info = localAccess.getLocalVariableInfo();
+                     if (info != null && info.isArray()) {
+                         write(", " + info.getVariableName() + BlockWriter.arrayLengthMangleSuffix);
+                     }
+                 } else if (argInsn instanceof AccessInstanceField) {
+                     AccessInstanceField fieldAccess = (AccessInstanceField)argInsn;
+                     FieldEntry entry = fieldAccess.getConstantPoolFieldEntry();
+
+                     String fieldName = entry.getNameAndTypeEntry()
+                         .getNameUTF8Entry().getUTF8();
+                     String fieldDesc = entry.getNameAndTypeEntry()
+                         .getDescriptorUTF8Entry().getUTF8();
+                     if (fieldDesc.startsWith("[")) {
+                        write(", this->" + fieldName + BlockWriter.arrayLengthMangleSuffix);
+                     }
+                 }
              }
              write(")");
          }
@@ -1100,7 +1136,7 @@ public abstract class KernelWriter extends BlockWriter{
 
          // Add int field into "this" struct for supporting java arraylength op
          // named like foo__javaArrayLength
-         if (isPointer && _entryPoint.getArrayFieldArrayLengthUsed().contains(field.getName())) {
+         if (isPointer && true /* _entryPoint.getArrayFieldArrayLengthUsed().contains(field.getName()) */ ) {
             final StringBuilder lenStructLine = new StringBuilder();
             final StringBuilder lenArgLine = new StringBuilder();
             final StringBuilder lenAssignLine = new StringBuilder();
@@ -1273,6 +1309,7 @@ public abstract class KernelWriter extends BlockWriter{
 
          final String returnType = mm.getReturnType();
          this.currentReturnType = returnType;
+         this.currentMethodModel = mm;
 
          final String fullReturnType;
          final String convertedReturnType = convertType(returnType, true);

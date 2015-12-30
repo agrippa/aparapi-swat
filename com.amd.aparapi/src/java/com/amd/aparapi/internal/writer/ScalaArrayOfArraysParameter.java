@@ -61,7 +61,7 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
             final StringBuilder builder = new StringBuilder();
             builder.append("this->" + name + " = " + name + " + " + name +
                    "_offsets[i]");
-            if (writer.getEntryPoint().getArrayFieldArrayLengthUsed().contains(name)) {
+            if (true /* writer.getEntryPoint().getArrayFieldArrayLengthUsed().contains(name) */ ) {
               builder.append("; this->" + name +
                       BlockWriter.arrayLengthMangleSuffix + " = " + name +
                       "_sizes[i]");

@@ -474,10 +474,9 @@ public class Entrypoint implements Cloneable {
            final Instruction callInstance, final MethodEntryInfo _methodEntry)
            throws AparapiException {
       final String methodsActualClassName = _methodEntry.getClassName().replace('/', '.');
-      System.err.println("resolveAccessorCandidate = " + methodsActualClassName + " " + _methodEntry.getMethodName() + " callInstance=" + callInstance);
 
       if (callInstance != null &&
-              !methodsActualClassName.equals("java.lang.Object") &&
+              !methodsActualClassName.startsWith("java.lang.") &&
               !methodsActualClassName.equals("scala.Tuple2") &&
               !methodsActualClassName.startsWith("scala.math") &&
               (!methodsActualClassName.startsWith("org.apache.spark") || methodsActualClassName.startsWith("org.apache.spark.rdd.cl"))) {

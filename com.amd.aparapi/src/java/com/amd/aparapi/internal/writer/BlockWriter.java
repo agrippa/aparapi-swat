@@ -403,7 +403,7 @@ public abstract class BlockWriter{
      return typeName.startsWith("L");
    }
 
-   private static String getAnonymousVariableName(MethodModel method, int localVariableIndex) {
+   public static String getAnonymousVariableName(MethodModel method, int localVariableIndex) {
        return method.getName() + "__tmp" + localVariableIndex;
    }
 
@@ -464,8 +464,24 @@ public abstract class BlockWriter{
               */
              String varname = getAnonymousVariableName(_instruction.getMethod(),
                      assignToLocalVariable.getLocalVariableTableIndex());
-             // TODO type inference here
-             write("int " + varname + " = ");
+             Instruction src = _instruction.getFirstChild();
+             if (src instanceof AccessLocalVariable) {
+                 LocalVariableInfo srcInfo = ((AccessLocalVariable)src).getLocalVariableInfo();
+                 final String descriptor = srcInfo.getVariableDescriptor();
+                 // Arrays always map to __global arrays
+                 if (descriptor.startsWith("[") || descriptor.startsWith("L")) {
+                    write(" __global ");
+                 }
+
+                 String localType = convertType(descriptor, true);
+                 if (descriptor.startsWith("L")) {
+                   localType = localType.replace('.', '_') + "*";
+                 }
+                 write(localType);
+             } else {
+                 throw new RuntimeException(src.toString());
+             }
+             write(" " + varname + " = ");
          } else {
             write(localVariableInfo.getVariableName() + " = ");
          }
