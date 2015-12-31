@@ -40,33 +40,56 @@ public class DenseVectorClassModel extends HardCodedClassModel {
 
         MethodDefGenerator sizeGen = new MethodDefGenerator<DenseVectorClassModel>() {
             @Override
-            public String getMethodDef(HardCodedMethodModel method,
+            public String getMethodReturnType(HardCodedMethodModel method,
+                    DenseVectorClassModel classModel, KernelWriter writer) {
+                return "int";
+            }
+
+            @Override
+            public String getMethodName(HardCodedMethodModel method,
+                    DenseVectorClassModel classModel, KernelWriter writer) {
+                return method.getName();
+            }
+
+            @Override
+            public String getMethodArgs(HardCodedMethodModel method,
                     DenseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
+                return "__global " + owner + " *this";
+            }
 
-                StringBuilder sb = new StringBuilder();
-
-                sb.append("static int " + method.getName() + "(__global " + owner + " *this) {\n");
-                sb.append("    return (this->size);\n");
-                sb.append("}");
-
-                return sb.toString();
+            @Override
+            public String getMethodBody(HardCodedMethodModel method,
+                    DenseVectorClassModel classModel, KernelWriter writer) {
+                return "    return (this->size);\n";
             }
         };
         methods.add(new HardCodedMethodModel("size", "()I", sizeGen, false, null));
 
         MethodDefGenerator applyGen = new MethodDefGenerator<DenseVectorClassModel>() {
             @Override
-            public String getMethodDef(HardCodedMethodModel method,
+            public String getMethodReturnType(HardCodedMethodModel method,
+                    DenseVectorClassModel classModel, KernelWriter writer) {
+                return "double";
+            }
+
+            @Override
+            public String getMethodName(HardCodedMethodModel method,
+                    DenseVectorClassModel classModel, KernelWriter writer) {
+                return method.getName();
+            }
+
+            @Override
+            public String getMethodArgs(HardCodedMethodModel method,
                     DenseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
+                return "__global " + owner + " *this, int index";
+            }
 
-                StringBuilder sb = new StringBuilder();
-                sb.append("static double " + method.getName() + "(__global " +
-                        owner + " *this, int index) {\n");
-                sb.append("    return (this->values)[this->tiling * index];\n");
-                sb.append("}");
-                return sb.toString();
+            @Override
+            public String getMethodBody(HardCodedMethodModel method,
+                    DenseVectorClassModel classModel, KernelWriter writer) {
+                return "    return (this->values)[this->tiling * index];\n";
             }
         };
         methods.add(new HardCodedMethodModel("apply", "(I)D", applyGen, false, null));

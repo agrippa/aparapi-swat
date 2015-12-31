@@ -54,6 +54,10 @@ import java.util.*;
 
 public abstract class KernelWriter extends BlockWriter{
 
+   public final static String functionArgumentsPrefix = "__global void * " +
+       "restrict __swat_heap, __global uint * restrict __swat_free_index, " +
+       "int * restrict __swat_alloc_failed, const int __swat_heap_size, ";
+
    public final static String BROADCAST_VALUE_SIG =
        "org/apache/spark/broadcast/Broadcast.value()Ljava/lang/Object;";
    public final static String TUPLE2_CLASSNAME = "scala.Tuple2";
@@ -237,7 +241,7 @@ public abstract class KernelWriter extends BlockWriter{
                currentReturnType);
      }
 
-     String checkStr = "if (this->alloc_failed) { return (" + nullReturn + "); }";
+     String checkStr = "if (*__swat_alloc_failed) { return (" + nullReturn + "); }";
      String indentedCheckStr = doIndent(checkStr);
 
      return indentedCheckStr;
@@ -245,8 +249,8 @@ public abstract class KernelWriter extends BlockWriter{
 
    private String generateAllocHelper(String allocVarName, String size, String typeName) {
      String allocStr = "__global " + typeName + " * " + allocVarName +
-       " = (__global " + typeName + " *)alloc(this->heap, this->free_index, " +
-       "this->heap_size, " + size + ", &this->alloc_failed);";
+       " = (__global " + typeName + " *)alloc(__swat_heap, __swat_free_index, " +
+       "__swat_heap_size, " + size + ", __swat_alloc_failed);";
      String indentedAllocStr = doIndent(allocStr);
 
      String indentedCheckStr = getAllocCheck();
@@ -410,6 +414,9 @@ public abstract class KernelWriter extends BlockWriter{
 
      write(m.getName());
      write("(");
+     if (entryPoint.requiresHeap()) {
+         write("__swat_heap, __swat_free_index, __swat_alloc_failed, __swat_heap_size, ");
+     }
 
      String allocVarName = "__alloc" + (countAllocs++);
      String typeName = m.getOwnerClassMangledName();
@@ -677,6 +684,12 @@ public abstract class KernelWriter extends BlockWriter{
              boolean isScalaStaticObjectCall = false;
              write("(");
 
+             boolean haveFirstArg = false;
+             if (entryPoint.requiresHeap()) {
+                 write("__swat_heap, __swat_free_index, __swat_alloc_failed, __swat_heap_size");
+                 haveFirstArg = true;
+             }
+
              if ((intrinsicMapping == null) && !isBroadcasted &&
                      (_methodCall instanceof VirtualMethodCall) && (!isIntrinsic)) {
 
@@ -688,9 +701,13 @@ public abstract class KernelWriter extends BlockWriter{
                  }
 
                  if (i instanceof I_ALOAD_0) {
+                     if (haveFirstArg) write(", ");
                      write("this");
+                     haveFirstArg = true;
                  } else if (i instanceof AccessLocalVariable || i instanceof I_INVOKEVIRTUAL) {
+                     if (haveFirstArg) write(", ");
                      writeInstruction(i);
+                     haveFirstArg = true;
                  } else if (i instanceof AccessArrayElement) {
                      final AccessArrayElement arrayAccess = (AccessArrayElement)i;
                      final Instruction refAccess = arrayAccess.getArrayRef();
@@ -698,10 +715,12 @@ public abstract class KernelWriter extends BlockWriter{
                          final String fieldName = ((AccessField) refAccess)
                              .getConstantPoolFieldEntry().getNameAndTypeEntry()
                              .getNameUTF8Entry().getUTF8();
-                         write(" &(this->" + fieldName);
+                         if (haveFirstArg) write(", ");
+                         write("&(this->" + fieldName);
                          write("[");
                          writeInstruction(arrayAccess.getArrayIndex());
                          write("])");
+                         haveFirstArg = true;
                      } else if (refAccess instanceof I_CHECKCAST) {
                          /*
                           * 13: getfield      #305                // Field broadcast$1:Lorg/apache/spark/broadcast/Broadcast;
@@ -728,11 +747,12 @@ public abstract class KernelWriter extends BlockWriter{
                          final String fieldName = ((AccessField)valueInvoke.getPrevPC())
                              .getConstantPoolFieldEntry().getNameAndTypeEntry()
                              .getNameUTF8Entry().getUTF8();
-                         write(" &(this->" + fieldName);
+                         if (haveFirstArg) write(", ");
+                         write("&(this->" + fieldName);
                          write("[");
                          writeInstruction(arrayAccess.getArrayIndex());
                          write("])");
-
+                         haveFirstArg = true;
                      } else {
                          throw new RuntimeException("Unexpected instruction " + refAccess);
                      }
@@ -740,7 +760,9 @@ public abstract class KernelWriter extends BlockWriter{
                  } else if (i instanceof New) {
                      // Constructor call
                      assert methodName.equals("<init>");
+                     if (haveFirstArg) write(", ");
                      writeInstruction(i);
+                     haveFirstArg = true;
                  } else if (i instanceof I_GETSTATIC &&
                          getStaticFieldName((I_GETSTATIC)i).equals("MODULE$")) {
                      /*
@@ -753,10 +775,9 @@ public abstract class KernelWriter extends BlockWriter{
                              _methodEntry + " from: " + i);
                  }
              }
+
              for (int arg = 0; arg < argc; arg++) {
-                 if (!isScalaStaticObjectCall && ((intrinsicMapping == null) &&
-                             (_methodCall instanceof VirtualMethodCall) &&
-                             (!isIntrinsic)) || (arg != 0)) {
+                 if (haveFirstArg) {
                      write(", ");
                  }
                  Instruction argInsn = _methodCall.getArg(arg);
@@ -779,6 +800,8 @@ public abstract class KernelWriter extends BlockWriter{
                         write(", this->" + fieldName + BlockWriter.arrayLengthMangleSuffix);
                      }
                  }
+
+                 haveFirstArg = true;
              }
              write(")");
          }
@@ -1161,14 +1184,14 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       if (_entryPoint.requiresHeap()) {
-        assigns.add("this->heap = heap");
-        assigns.add("this->free_index = free_index");
-        assigns.add("this->heap_size = heap_size");
+        // assigns.add("this->heap = heap");
+        // assigns.add("this->free_index = free_index");
+        // assigns.add("this->heap_size = heap_size");
 
-        thisStruct.add("__global void *heap");
-        thisStruct.add("__global uint *free_index");
-        thisStruct.add("int alloc_failed");
-        thisStruct.add("unsigned int heap_size");
+        // thisStruct.add("__global void *heap");
+        // thisStruct.add("__global uint *free_index");
+        // thisStruct.add("int alloc_failed");
+        // thisStruct.add("unsigned int heap_size");
       }
 
       if (Config.enableByteWrites || _entryPoint.requiresByteAddressableStorePragma()) {
@@ -1353,11 +1376,20 @@ public abstract class KernelWriter extends BlockWriter{
 
          write(mm.getName() + "(");
 
+         boolean alreadyHasFirstArg = false;
+
+         if (_entryPoint.requiresHeap()) {
+             write(functionArgumentsPrefix);
+             alreadyHasFirstArg = true;
+         }
+
+         // Write this argument
          if (!mm.getMethod().isStatic() && !isMemberOfScalaObject(mm)) {
             if ((mm.getMethod().getClassModel() == _entryPoint.getClassModel())
                   || mm.getMethod().getClassModel().isSuperClass(
                       _entryPoint.getClassModel().getClassWeAreModelling())) {
                write("This *this");
+               alreadyHasFirstArg = true;
             } else {
                // Call to an object member or superclass of member
                Iterator<ClassModel> classIter = _entryPoint.getObjectArrayFieldsClassesIterator();
@@ -1367,19 +1399,19 @@ public abstract class KernelWriter extends BlockWriter{
                      write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " + mm.getMethod().getClassModel()
                              .getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this");
+                     alreadyHasFirstArg = true;
                      break;
                   } else if (mm.getMethod().getClassModel().isSuperClass(
                               c.getClassWeAreModelling())) {
                      write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " +
                              c.getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this");
+                     alreadyHasFirstArg = true;
                      break;
                   }
                }
             }
          }
-
-         boolean alreadyHasFirstArg = (!mm.getMethod().isStatic() && !isMemberOfScalaObject(mm));
 
          final LocalVariableTableEntry<LocalVariableInfo> lvte = mm.getLocalVariableTableEntry();
          for (final LocalVariableInfo lvi : lvte) {
@@ -1520,7 +1552,7 @@ public abstract class KernelWriter extends BlockWriter{
          if (_entryPoint.requiresHeap()) {
            writeln("if (iter == 0) processing_succeeded[i] = 0;");
            writeln("else if (processing_succeeded[i]) continue;");
-           writeln("this->alloc_failed = 0;");
+           writeln("int alloc_failed = 0;");
          }
 
          if (multiInput) {
@@ -1542,17 +1574,27 @@ public abstract class KernelWriter extends BlockWriter{
            }
          }
 
+         StringBuilder startingArguments = new StringBuilder();
+         if (_entryPoint.requiresHeap()) {
+             startingArguments.append("heap, free_index, &alloc_failed, " +
+                     "heap_size, ");
+         }
+         startingArguments.append("this");
+
          if (outParam.getClazz() != null) {
            write("__global " + outParam.getType() + "* result = " +
-               _entryPoint.getMethodModel().getName() + "(this");
+               _entryPoint.getMethodModel().getName() + "(" +
+               startingArguments.toString());
          } else if (outParam instanceof ScalaArrayOfArraysParameter) {
            final String primitiveType =
                ((ScalaArrayOfArraysParameter)outParam).primitiveElementType;
            write("__global " + primitiveType + "* result = " +
-                   _entryPoint.getMethodModel().getName() + "(this");
+                   _entryPoint.getMethodModel().getName() + "(" +
+                   startingArguments.toString());
          } else {
            write(outParam.getName() + "[i] = " +
-                   _entryPoint.getMethodModel().getName() + "(this");
+                   _entryPoint.getMethodModel().getName() + "(" +
+                   startingArguments.toString());
          }
 
          for (ScalaArrayParameter p : params) {
@@ -1573,7 +1615,7 @@ public abstract class KernelWriter extends BlockWriter{
          newLine();
 
          if (_entryPoint.requiresHeap()) {
-           write("if (!this->alloc_failed) {");
+           write("if (!alloc_failed) {");
            in();
            newLine();
            {

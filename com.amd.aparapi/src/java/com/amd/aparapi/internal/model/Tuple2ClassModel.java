@@ -105,21 +105,35 @@ public class Tuple2ClassModel extends HardCodedClassModel {
             }
 
             @Override
-            public String getMethodDef(HardCodedMethodModel method,
+            public String getMethodReturnType(HardCodedMethodModel method,
                     Tuple2ClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
+                return "__global " + owner + "*";
+            }
 
+            @Override
+            public String getMethodName(HardCodedMethodModel method,
+                    Tuple2ClassModel classModel, KernelWriter writer) {
+                return method.getName();
+            }
+
+            @Override
+            public String getMethodArgs(HardCodedMethodModel method,
+                    Tuple2ClassModel classModel, KernelWriter writer) {
+                String owner = method.getOwnerClassMangledName();
                 final String firstType = convertDescToType(classModel.getFirstTypeDesc(), writer);
                 final String secondType = convertDescToType(classModel.getSecondTypeDesc(), writer);
+                return "__global " + owner + " *this, " + firstType + " one, " +
+                    secondType + " two";
+            }
 
+            @Override
+            public String getMethodBody(HardCodedMethodModel method,
+                    Tuple2ClassModel classModel, KernelWriter writer) {
                 StringBuilder sb = new StringBuilder();
-                sb.append("static __global " + owner + " *" + method.getName() +
-                    "(__global " + owner + " *this, " + firstType +
-                    " one, " + secondType + " two) {\n");
                 sb.append("   this->_1 = one;\n");
                 sb.append("   this->_2 = two;\n");
                 sb.append("   return this;\n");
-                sb.append("}");
                 return sb.toString();
             }
         };

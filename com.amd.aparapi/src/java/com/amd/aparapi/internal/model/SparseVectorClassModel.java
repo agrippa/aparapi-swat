@@ -40,49 +40,84 @@ public class SparseVectorClassModel extends HardCodedClassModel {
 
         MethodDefGenerator sizeGen = new MethodDefGenerator<SparseVectorClassModel>() {
             @Override
-            public String getMethodDef(HardCodedMethodModel method,
+            public String getMethodReturnType(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return "int";
+            }
+
+            @Override
+            public String getMethodName(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return method.getName();
+            }
+
+            @Override
+            public String getMethodArgs(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
+                return "__global " + owner + " *this";
+            }
 
-                StringBuilder sb = new StringBuilder();
-
-                sb.append("static int " + method.getName() + "(__global " + owner + " *this) {\n");
-                sb.append("    return (this->size);\n");
-                sb.append("}");
-
-                return sb.toString();
+            @Override
+            public String getMethodBody(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return "    return (this->size);\n";
             }
         };
         methods.add(new HardCodedMethodModel("size", "()I", sizeGen, false, null));
 
         MethodDefGenerator indicesGen = new MethodDefGenerator<SparseVectorClassModel>() {
             @Override
-            public String getMethodDef(HardCodedMethodModel method,
+            public String getMethodReturnType(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return "int";
+            }
+
+            @Override
+            public String getMethodName(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return method.getName();
+            }
+
+            @Override
+            public String getMethodArgs(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
+                return "__global " + owner + " *this";
+            }
 
-                StringBuilder sb = new StringBuilder();
-                sb.append("static __global int *" + method.getName() + "(__global " +
-                        owner + " *this) {\n");
-                sb.append("    return (this->indices);\n");
-                sb.append("}");
-                return sb.toString();
+            @Override
+            public String getMethodBody(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return "    return (this->indices);\n";
             }
         };
         methods.add(new HardCodedMethodModel("indices", "()[I", indicesGen, false, null));
 
         MethodDefGenerator valuesGen = new MethodDefGenerator<SparseVectorClassModel>() {
             @Override
-            public String getMethodDef(HardCodedMethodModel method,
+            public String getMethodReturnType(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return "double*";
+            }
+
+            @Override
+            public String getMethodName(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return method.getName();
+            }
+
+            @Override
+            public String getMethodArgs(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
+                return "__global " + owner + " *this";
+            }
 
-                StringBuilder sb = new StringBuilder();
-                sb.append("static __global double *" + method.getName() + "(__global " +
-                        owner + " *this) {\n");
-                sb.append("    return (this->values);\n");
-                sb.append("}");
-                return sb.toString();
+            @Override
+            public String getMethodBody(HardCodedMethodModel method,
+                    SparseVectorClassModel classModel, KernelWriter writer) {
+                return "    return (this->values);\n";
             }
         };
         methods.add(new HardCodedMethodModel("values", "()[D", valuesGen, false, null));

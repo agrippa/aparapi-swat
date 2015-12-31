@@ -37,7 +37,20 @@ public class HardCodedMethodModel extends MethodModel {
     }
 
     public String getMethodDef(HardCodedClassModel classModel, KernelWriter writer) {
-        return methodDef.getMethodDef(this, classModel, writer);
+        StringBuilder sb = new StringBuilder();
+        final String returnType = methodDef.getMethodReturnType(this,
+                classModel, writer);
+        final String methodName = methodDef.getMethodName(this, classModel,
+                writer);
+        final String args = methodDef.getMethodArgs(this, classModel, writer);
+        sb.append("static " + returnType + " " + methodName + "(");
+        if (writer.getEntryPoint().requiresHeap()) {
+            sb.append(KernelWriter.functionArgumentsPrefix);
+        }
+        sb.append(args + ") {\n");
+        sb.append(methodDef.getMethodBody(this, classModel, writer));
+        sb.append("}\n");
+        return sb.toString();
     }
 
     @Override
@@ -55,7 +68,13 @@ public class HardCodedMethodModel extends MethodModel {
     }
 
     public abstract static class MethodDefGenerator<T extends HardCodedClassModel> {
-        public abstract String getMethodDef(HardCodedMethodModel method,
+        public abstract String getMethodReturnType(HardCodedMethodModel method,
+            T classModel, KernelWriter writer);
+        public abstract String getMethodName(HardCodedMethodModel method,
+            T classModel, KernelWriter writer);
+        public abstract String getMethodArgs(HardCodedMethodModel method,
+            T classModel, KernelWriter writer);
+        public abstract String getMethodBody(HardCodedMethodModel method,
             T classModel, KernelWriter writer);
     }
 }
