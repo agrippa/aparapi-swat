@@ -70,7 +70,7 @@ public class SparseVectorClassModel extends HardCodedClassModel {
             @Override
             public String getMethodReturnType(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
-                return "int";
+                return "__global int*";
             }
 
             @Override
@@ -98,7 +98,7 @@ public class SparseVectorClassModel extends HardCodedClassModel {
             @Override
             public String getMethodReturnType(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
-                return "double*";
+                return "__global double*";
             }
 
             @Override

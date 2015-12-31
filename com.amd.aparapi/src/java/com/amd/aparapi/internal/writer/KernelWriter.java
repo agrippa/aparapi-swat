@@ -594,7 +594,6 @@ public abstract class KernelWriter extends BlockWriter{
          }
          final String intrinsicMapping = Kernel.getMappedMethodName(_methodEntry);
          boolean isIntrinsic = false;
-
          boolean isInternalMap = false;
 
          if (intrinsicMapping == null) {
@@ -685,7 +684,7 @@ public abstract class KernelWriter extends BlockWriter{
              write("(");
 
              boolean haveFirstArg = false;
-             if (entryPoint.requiresHeap()) {
+             if (!isIntrinsic && entryPoint.requiresHeap()) {
                  write("__swat_heap, __swat_free_index, __swat_alloc_failed, __swat_heap_size");
                  haveFirstArg = true;
              }
@@ -978,7 +977,7 @@ public abstract class KernelWriter extends BlockWriter{
    private void writeNormalizeToHeap(String varname) {
        writeln(varname + " = " +
                "((__global char *)" + varname + ") - " +
-               "((__global char *)this->heap);");
+               "((__global char *)heap);");
    }
 
    // member == 1 or member == 2
@@ -1079,7 +1078,7 @@ public abstract class KernelWriter extends BlockWriter{
            writeln(outParam.getName() + "_iters[i] = iter;");
            writeln(outParam.getName() + "[i] = " +
                    "((__global char *)result) - " +
-                   "((__global char *)this->heap);");
+                   "((__global char *)heap);");
        }
    }
 
