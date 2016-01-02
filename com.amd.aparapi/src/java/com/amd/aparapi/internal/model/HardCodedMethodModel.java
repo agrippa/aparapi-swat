@@ -46,6 +46,7 @@ public class HardCodedMethodModel extends MethodModel {
         sb.append("static " + returnType + " " + methodName + "(");
         if (writer.getEntryPoint().requiresHeap()) {
             sb.append(KernelWriter.functionArgumentsPrefix);
+            if (args.length() > 0) sb.append(", ");
         }
         sb.append(args + ") {\n");
         sb.append(methodDef.getMethodBody(this, classModel, writer));

@@ -56,7 +56,7 @@ public abstract class KernelWriter extends BlockWriter{
 
    public final static String functionArgumentsPrefix = "__global void * " +
        "restrict __swat_heap, __global uint * restrict __swat_free_index, " +
-       "int * restrict __swat_alloc_failed, const int __swat_heap_size, ";
+       "int * restrict __swat_alloc_failed, const int __swat_heap_size";
 
    public final static String BROADCAST_VALUE_SIG =
        "org/apache/spark/broadcast/Broadcast.value()Ljava/lang/Object;";
@@ -1387,6 +1387,7 @@ public abstract class KernelWriter extends BlockWriter{
             if ((mm.getMethod().getClassModel() == _entryPoint.getClassModel())
                   || mm.getMethod().getClassModel().isSuperClass(
                       _entryPoint.getClassModel().getClassWeAreModelling())) {
+               if (alreadyHasFirstArg) write(", ");
                write("This *this");
                alreadyHasFirstArg = true;
             } else {
@@ -1395,6 +1396,7 @@ public abstract class KernelWriter extends BlockWriter{
                while (classIter.hasNext()) {
                   final ClassModel c = classIter.next();
                   if (mm.getMethod().getClassModel() == c) {
+                     if (alreadyHasFirstArg) write(", ");
                      write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " + mm.getMethod().getClassModel()
                              .getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this");
@@ -1402,6 +1404,7 @@ public abstract class KernelWriter extends BlockWriter{
                      break;
                   } else if (mm.getMethod().getClassModel().isSuperClass(
                               c.getClassWeAreModelling())) {
+                     if (alreadyHasFirstArg) write(", ");
                      write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " +
                              c.getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this");
