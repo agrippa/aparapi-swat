@@ -24,7 +24,11 @@ public class ScalaPrimitiveOrObjectArrayParameter extends ScalaArrayParameter {
             throw new RuntimeException();
         }
 
-        return "__global " + type.replace('.', '_') + "* restrict " + name;
+        if (BlockWriter.emitOcl) {
+            return "__global " + type.replace('.', '_') + "* restrict " + name;
+        } else {
+            return type.replace('.', '_') + "* " + name;
+        }
     }
 
     @Override
@@ -33,7 +37,11 @@ public class ScalaPrimitiveOrObjectArrayParameter extends ScalaArrayParameter {
             throw new RuntimeException();
         }
 
-        return "__global " + type.replace('.', '_') + "* restrict " + name;
+        if (BlockWriter.emitOcl) {
+            return "__global " + type.replace('.', '_') + "* restrict " + name;
+        } else {
+            return type.replace('.', '_') + "* " + name;
+        }
     }
 
     @Override
@@ -57,9 +65,9 @@ public class ScalaPrimitiveOrObjectArrayParameter extends ScalaArrayParameter {
         }
 
         if (writer.multiInput) {
-            return "this->" + name + " = " + name + "[i]";
+            return "this_ptr->" + name + " = " + name + "[i]";
         } else {
-            return "this->" + name + " = " + name;
+            return "this_ptr->" + name + " = " + name;
         }
     }
 }

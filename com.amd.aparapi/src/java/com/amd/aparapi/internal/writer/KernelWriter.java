@@ -158,7 +158,7 @@ public abstract class KernelWriter extends BlockWriter{
       javaToCLIdentifierMap.put("getGroupY()I", "get_group_id(1)");
       javaToCLIdentifierMap.put("getGroupZ()I", "get_group_id(2)");
 
-      javaToCLIdentifierMap.put("getPassId()I", "get_pass_id(this)");
+      javaToCLIdentifierMap.put("getPassId()I", "get_pass_id(this_ptr)");
 
       javaToCLIdentifierMap.put("localBarrier()V", "barrier(CLK_LOCAL_MEM_FENCE)");
 
@@ -209,7 +209,7 @@ public abstract class KernelWriter extends BlockWriter{
    @Override public void writeReturn(Return ret) throws CodeGenException {
      write("return");
      if (processingConstructor) {
-       write(" (this)");
+       write(" (this_ptr)");
      } else if (ret.getStackConsumeCount() > 0) {
        write("(");
        writeInstruction(ret.getFirstChild());
@@ -520,7 +520,7 @@ public abstract class KernelWriter extends BlockWriter{
            if (isThis(_methodCall.getArg(0))) {
              String fieldName = getterFieldName;
              // if (isObjectField) write("&(");
-             write("this->");
+             write("this_ptr->");
              write(fieldName);
              // if (isObjectField) write(")");
              return false;
@@ -536,9 +536,12 @@ public abstract class KernelWriter extends BlockWriter{
                LocalVariableInfo info = ld.getLocalVariableInfo();
                if (info != null) {
                  if (!info.isArray()) {
-                   // if (isObjectField) write("(&(");
-                   write(info.getVariableName() + "->" + getterFieldName);
-                   // if (isObjectField) write("))");
+                   final String varName = info.getVariableName();
+                   if (varName.equals("this")) {
+                       write("this_ptr->" + getterFieldName);
+                   } else {
+                       write(info.getVariableName() + "->" + getterFieldName);
+                   }
                    return false;
                  }
                } else {
@@ -574,7 +577,7 @@ public abstract class KernelWriter extends BlockWriter{
                //assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
                final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
                      .getNameUTF8Entry().getUTF8();
-               write(" (this->" + fieldName);
+               write(" (this_ptr->" + fieldName);
                write("[");
                writeInstruction(arrayAccess.getArrayIndex());
                write("])." + getterFieldName);
@@ -634,7 +637,7 @@ public abstract class KernelWriter extends BlockWriter{
                 String fieldName = ((I_GETFIELD)target)
                     .getConstantPoolFieldEntry().getNameAndTypeEntry()
                     .getNameUTF8Entry().getUTF8();
-                write("this->" + fieldName);
+                write("this_ptr->" + fieldName);
             } else if (isDenseVectorCreate) {
                 String allocVarName = "__alloc" + (countAllocs++);
                 String allocStr = generateAllocHelper(allocVarName,
@@ -701,7 +704,7 @@ public abstract class KernelWriter extends BlockWriter{
 
                  if (i instanceof I_ALOAD_0) {
                      if (haveFirstArg) write(", ");
-                     write("this");
+                     write("this_ptr");
                      haveFirstArg = true;
                  } else if (i instanceof AccessLocalVariable || i instanceof I_INVOKEVIRTUAL) {
                      if (haveFirstArg) write(", ");
@@ -715,7 +718,7 @@ public abstract class KernelWriter extends BlockWriter{
                              .getConstantPoolFieldEntry().getNameAndTypeEntry()
                              .getNameUTF8Entry().getUTF8();
                          if (haveFirstArg) write(", ");
-                         write("&(this->" + fieldName);
+                         write("&(this_ptr->" + fieldName);
                          write("[");
                          writeInstruction(arrayAccess.getArrayIndex());
                          write("])");
@@ -747,7 +750,7 @@ public abstract class KernelWriter extends BlockWriter{
                              .getConstantPoolFieldEntry().getNameAndTypeEntry()
                              .getNameUTF8Entry().getUTF8();
                          if (haveFirstArg) write(", ");
-                         write("&(this->" + fieldName);
+                         write("&(this_ptr->" + fieldName);
                          write("[");
                          writeInstruction(arrayAccess.getArrayIndex());
                          write("])");
@@ -796,7 +799,7 @@ public abstract class KernelWriter extends BlockWriter{
                      String fieldDesc = entry.getNameAndTypeEntry()
                          .getDescriptorUTF8Entry().getUTF8();
                      if (fieldDesc.startsWith("[")) {
-                        write(", this->" + fieldName + BlockWriter.arrayLengthMangleSuffix);
+                        write(", this_ptr->" + fieldName + BlockWriter.arrayLengthMangleSuffix);
                      }
                  }
 
@@ -874,8 +877,11 @@ public abstract class KernelWriter extends BlockWriter{
 
        final String mangledClassName = cm.getMangledClassName();
        newLine();
-       // write("typedef struct __attribute__ ((packed)) " + mangledClassName + "_s{");
-       write("struct __attribute__ ((packed)) " + mangledClassName + "_s{");
+       if (BlockWriter.emitOcl) {
+           write("struct __attribute__ ((packed)) " + mangledClassName + "_s{");
+       } else {
+           write("struct " + mangledClassName + "_s{");
+       }
        in();
        newLine();
 
@@ -1172,7 +1178,7 @@ public abstract class KernelWriter extends BlockWriter{
             thisStruct.add(lenStructLine.toString());
 
             if (!multiInput) {
-               lenAssignLine.append("this->");
+               lenAssignLine.append("this_ptr->");
                lenAssignLine.append(lenName);
                lenAssignLine.append(" = ");
                lenAssignLine.append(lenName);
@@ -1275,8 +1281,6 @@ public abstract class KernelWriter extends BlockWriter{
           newLine();
       }
 
-      writeln("typedef struct org_apache_spark_rdd_cl_tests_PrimitiveInputPrimitiveOutputTest_s org_apache_spark_rdd_cl_tests_PrimitiveInputPrimitiveOutputTest;");
-
       // Emit structs for oop transformation accessors
       List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
       Set<String> emitted = new HashSet<String>();
@@ -1285,7 +1289,11 @@ public abstract class KernelWriter extends BlockWriter{
             final String mangled = cm.getMangledClassName();
             if (emitted.contains(mangled)) continue;
 
-            writeln("typedef struct __attribute__ ((packed)) " + mangled + "_s " + mangled + ";");
+            if (BlockWriter.emitOcl) {
+                writeln("typedef struct __attribute__ ((packed)) " + mangled + "_s " + mangled + ";");
+            } else {
+                writeln("typedef struct " + mangled + "_s " + mangled + ";");
+            }
             emitted.add(mangled);
         }
       }
@@ -1411,7 +1419,7 @@ public abstract class KernelWriter extends BlockWriter{
                   || mm.getMethod().getClassModel().isSuperClass(
                       _entryPoint.getClassModel().getClassWeAreModelling())) {
                if (alreadyHasFirstArg) write(", ");
-               write("This *this");
+               write("This *this_ptr");
                alreadyHasFirstArg = true;
             } else {
                // Call to an object member or superclass of member
@@ -1422,7 +1430,7 @@ public abstract class KernelWriter extends BlockWriter{
                      if (alreadyHasFirstArg) write(", ");
                      write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " + mm.getMethod().getClassModel()
                              .getClassWeAreModelling().getName().replace('.',
-                                 '_') + " *this");
+                                 '_') + " *this_ptr");
                      alreadyHasFirstArg = true;
                      break;
                   } else if (mm.getMethod().getClassModel().isSuperClass(
@@ -1430,7 +1438,7 @@ public abstract class KernelWriter extends BlockWriter{
                      if (alreadyHasFirstArg) write(", ");
                      write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " +
                              c.getClassWeAreModelling().getName().replace('.',
-                                 '_') + " *this");
+                                 '_') + " *this_ptr");
                      alreadyHasFirstArg = true;
                      break;
                   }
@@ -1495,7 +1503,11 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       ScalaArrayParameter outParam = null;
-      write("__kernel void run(");
+      if (BlockWriter.emitOcl) {
+          write("__kernel void run(");
+      } else {
+          write("extern \"C\" __global__ void run(");
+      }
       in(); in();
       newLine();
       {
@@ -1536,9 +1548,15 @@ public abstract class KernelWriter extends BlockWriter{
          }
 
          if (_entryPoint.requiresHeap()) {
-            write(", __global void * restrict heap, __global uint * " +
-                    "restrict free_index, unsigned int heap_size, __global " +
-                    "int * restrict processing_succeeded");
+            if (BlockWriter.emitOcl) {
+                write(", __global void * restrict heap, __global uint * " +
+                        "restrict free_index, unsigned int heap_size, __global " +
+                        "int * restrict processing_succeeded");
+            } else {
+                write(", void * restrict heap, unsigned * " +
+                        "restrict free_index, unsigned int heap_size, " +
+                        "int * restrict processing_succeeded");
+            }
          }
          write(", int N, int iter");
       }
@@ -1550,7 +1568,7 @@ public abstract class KernelWriter extends BlockWriter{
       }
 
       writeln("This thisStruct;");
-      writeln("This* this=&thisStruct;");
+      writeln("This* this_ptr=&thisStruct;");
 
       if (!multiInput) {
           for (final String line : assigns) {
@@ -1570,7 +1588,11 @@ public abstract class KernelWriter extends BlockWriter{
         }
       }
 
-    write("for (int i = get_global_id(0); i < N; i += get_global_size(0)) {");
+    if (BlockWriter.emitOcl) {
+        write("for (int i = get_global_id(0); i < N; i += get_global_size(0)) {");
+    } else {
+        write("for (int i = (blockIdx.x * blockDim.x + threadIdx.x); i < N; i += (gridDim.x * blockDim.x)) {");
+    }
       in();
       newLine();
       {
@@ -1604,7 +1626,7 @@ public abstract class KernelWriter extends BlockWriter{
              startingArguments.append("heap, free_index, &alloc_failed, " +
                      "heap_size, ");
          }
-         startingArguments.append("this");
+         startingArguments.append("this_ptr");
 
          if (outParam.getClazz() != null) {
            write("__global " + outParam.getType() + "* result = " +
@@ -1663,7 +1685,7 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    @Override public void writeThisRef() {
-      write("this->");
+      write("this_ptr->");
    }
 
    @Override public boolean writeInstruction(Instruction _instruction) throws CodeGenException {

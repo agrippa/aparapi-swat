@@ -27,11 +27,19 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
                    "captured by multi-input lambdas");
        }
 
-       return "__global org_apache_spark_mllib_linalg_SparseVector * restrict " + name +
-           ", __global int * restrict " + name + "_indices, __global double * restrict " +
-           name + "_values, __global int * restrict " + name +
-           "_sizes, __global int * restrict " + name + "_offsets, int n" + name +
-           ", int " + name + "_tiling";
+       if (BlockWriter.emitOcl) {
+           return "__global org_apache_spark_mllib_linalg_SparseVector * restrict " + name +
+               ", __global int * restrict " + name + "_indices, __global double * restrict " +
+               name + "_values, __global int * restrict " + name +
+               "_sizes, __global int * restrict " + name + "_offsets, int n" + name +
+               ", int " + name + "_tiling";
+       } else {
+           return "org_apache_spark_mllib_linalg_SparseVector * " + name +
+               ", int * " + name + "_indices, double * " +
+               name + "_values, int * " + name +
+               "_sizes, int * " + name + "_offsets, int n" + name +
+               ", int " + name + "_tiling";
+       }
    }
 
    @Override
@@ -40,7 +48,11 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
            throw new RuntimeException();
        }
 
-       return "__global " + type.replace('.', '_') + "* restrict " + name;
+       if (BlockWriter.emitOcl) {
+           return "__global " + type.replace('.', '_') + "* restrict " + name;
+       } else {
+           return type.replace('.', '_') + "* " + name;
+       }
    }
 
    @Override
@@ -68,14 +80,14 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
        }
 
        StringBuilder builder = new StringBuilder();
-       builder.append("this->" + name + " = " + name + ";\n");
+       builder.append("this_ptr->" + name + " = " + name + ";\n");
        builder.append("   for (int j = 0; j < n" + name + "; j++) {\n");
-       builder.append("      (this->" + name + ")[j].values = " + name +
+       builder.append("      (this_ptr->" + name + ")[j].values = " + name +
                "_values + " + name + "_offsets[j];\n");
-       builder.append("      (this->" + name + ")[j].indices = " + name +
+       builder.append("      (this_ptr->" + name + ")[j].indices = " + name +
                "_indices + " + name + "_offsets[j];\n");
-       builder.append("      (this->" + name + ")[j].size = " + name + "_sizes[j];\n");
-       builder.append("      (this->" + name + ")[j].tiling = " + name + "_tiling;\n");
+       builder.append("      (this_ptr->" + name + ")[j].size = " + name + "_sizes[j];\n");
+       builder.append("      (this_ptr->" + name + ")[j].tiling = " + name + "_tiling;\n");
        builder.append("   }\n");
        return builder.toString();
    }

@@ -26,9 +26,15 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
 
     @Override
     public String getInputParameterString(KernelWriter writer) {
-        return "__global " + primitiveElementType + " * restrict " + name +
-            ", __global int * restrict " + name + "_sizes, " +
-            "__global int * restrict " + name + "_offsets, int n" + name;
+        if (BlockWriter.emitOcl) {
+            return "__global " + primitiveElementType + " * restrict " + name +
+                ", __global int * restrict " + name + "_sizes, " +
+                "__global int * restrict " + name + "_offsets, int n" + name;
+        } else {
+            return primitiveElementType + " * " + name +
+                ", int * " + name + "_sizes, " +
+                "int * " + name + "_offsets, int n" + name;
+        }
     }
 
     @Override
@@ -37,8 +43,13 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
             throw new RuntimeException();
         }
 
-        return "__global int * restrict " + name +
-            ", __global int * restrict " + name + "_iters";
+        if (BlockWriter.emitOcl) {
+            return "__global int * restrict " + name +
+                ", __global int * restrict " + name + "_iters";
+        } else {
+            return "int * " + name +
+                ", int * " + name + "_iters";
+        }
     }
 
     @Override
@@ -59,10 +70,10 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
 
         if (writer.multiInput) {
             final StringBuilder builder = new StringBuilder();
-            builder.append("this->" + name + " = " + name + " + " + name +
+            builder.append("this_ptr->" + name + " = " + name + " + " + name +
                    "_offsets[i]");
             if (true /* writer.getEntryPoint().getArrayFieldArrayLengthUsed().contains(name) */ ) {
-              builder.append("; this->" + name +
+              builder.append("; this_ptr->" + name +
                       BlockWriter.arrayLengthMangleSuffix + " = " + name +
                       "_sizes[i]");
             }

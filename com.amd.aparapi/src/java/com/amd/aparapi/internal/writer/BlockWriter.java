@@ -316,7 +316,7 @@ public abstract class BlockWriter{
       write("{");
       in();
       newLine();
-      write("return this->");
+      write("return this_ptr->");
       write(accessorVariableFieldEntry.getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
       write(";");
       out();
@@ -552,7 +552,7 @@ public abstract class BlockWriter{
             NameAndTypeEntry nameAndTypeEntry = ((AccessInstanceField) load).getConstantPoolFieldEntry().getNameAndTypeEntry();
             if (isMultiDimensionalArray(nameAndTypeEntry)) {
                String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
-               write(" * this->" + arrayName + arrayDimMangleSuffix + dim);
+               write(" * this_ptr->" + arrayName + arrayDimMangleSuffix + dim);
             }
          }
 
@@ -596,7 +596,7 @@ public abstract class BlockWriter{
             final String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
             String dimSuffix = isMultiDimensionalArray(nameAndTypeEntry) ?
                 Integer.toString(dim) : "";
-            write("this->" + arrayName + arrayLengthMangleSuffix + dimSuffix);
+            write("this_ptr->" + arrayName + arrayLengthMangleSuffix + dimSuffix);
          } else if (load instanceof LocalVariableConstIndexLoad) {
              assert(dim == 1);
              final String arrayName = ((LocalVariableConstIndexLoad)load)
@@ -935,7 +935,7 @@ public abstract class BlockWriter{
    }
 
    public void writeThisRef() {
-      write("this.");
+      write("this_ptr.");
    }
 
    public void writeMethodBody(MethodModel _methodModel) throws CodeGenException {

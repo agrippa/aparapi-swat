@@ -179,8 +179,9 @@ public class Tuple2ClassModel extends HardCodedClassModel {
     public String getMangledClassName() {
         final String firstTypeClassName = descToName(getFirstTypeDesc());
         final String secondTypeClassName = descToName(getSecondTypeDesc());
-        return "scala_Tuple2_" + KernelWriter.removeBadChars(firstTypeClassName) + "_" +
+        final String fullName = "scala_Tuple2_" + KernelWriter.removeBadChars(firstTypeClassName) + "_" +
           KernelWriter.removeBadChars(secondTypeClassName);
+        return fullName.replace('$', '_');
     }
 
    @Override

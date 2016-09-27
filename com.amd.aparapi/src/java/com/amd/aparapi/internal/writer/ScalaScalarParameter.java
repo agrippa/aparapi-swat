@@ -20,7 +20,11 @@ public class ScalaScalarParameter implements ScalaParameter {
     @Override
     public String getInputParameterString(KernelWriter writer) {
         if (writer.multiInput) {
-            return "__global " + type + "* restrict " + name;
+            if (BlockWriter.emitOcl) {
+                return "__global " + type + "* restrict " + name;
+            } else {
+                return type + "* " + name;
+            }
         } else {
             return type + " " + name;
         }
@@ -39,9 +43,9 @@ public class ScalaScalarParameter implements ScalaParameter {
     @Override
     public String getGlobalInitString(KernelWriter writer) {
         if (writer.multiInput) {
-            return "this->" + name + " = " + name + "[i]";
+            return "this_ptr->" + name + " = " + name + "[i]";
         } else {
-            return "this->" + name + " = " + name;
+            return "this_ptr->" + name + " = " + name;
         }
     }
 

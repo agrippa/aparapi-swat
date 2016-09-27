@@ -1907,8 +1907,8 @@ public abstract class MethodModel {
     */
    public String getName() {
       return (method.getClassModel().getMethod(method.getName(), method.getDescriptor()).getClassModel().getClassWeAreModelling()
-            .getName().replace('.', '_')
-            + "__" + method.getName().replace('<', '_').replace('>', '_'));
+                .getName().replace('.', '_').replace('$', '_')
+            + "__" + method.getName().replace('<', '_').replace('>', '_').replace('$', '_'));
    }
 
    public String getReturnType() {

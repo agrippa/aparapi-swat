@@ -138,7 +138,7 @@ public class SparseVectorClassModel extends HardCodedClassModel {
 
     @Override
     public String getMangledClassName() {
-        return className.replace('.', '_');
+        return className.replace('.', '_').replace('$', '_');
     }
 
    @Override

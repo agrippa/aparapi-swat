@@ -64,7 +64,12 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
 
         final String firstParam = getParameterStringFor(writer, 0);
         final String secondParam = getParameterStringFor(writer, 1);
-        String containerParam = "__global " + getType() + " * restrict " + name;
+        final String containerParam;
+        if (BlockWriter.emitOcl) {
+            containerParam = "__global " + getType() + " * restrict " + name;
+        } else {
+            containerParam = getType() + " * " + name;
+        }
         return firstParam + ", " + secondParam + ", " + containerParam;
     }
 
@@ -142,7 +147,7 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("this->" + name + " = " + name + "; ");
+        sb.append("this_ptr->" + name + " = " + name + "; ");
         sb.append("for (int ii = 0; ii < " + name + "__javaArrayLength; ii++) { ");
 
         sb.append(getAssignStringFor(typeParameterIsObject.get(0), 1,

@@ -95,7 +95,7 @@ public class LoadedClassModel extends ClassModel {
 
    @Override
    public String getMangledClassName() {
-       return getClassWeAreModelling().getName().replace('.', '_');
+       return getClassWeAreModelling().getName().replace('.', '_').replace('$', '_');
    }
 
    //   private ValueCache<MethodKey, MethodModel, AparapiException> methodModelCache = ValueCache.on(this::computeMethodModel);
