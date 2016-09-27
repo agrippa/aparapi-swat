@@ -61,6 +61,12 @@ import java.util.*;
 
 public abstract class BlockWriter{
 
+   /*
+    * A publically settable boolean flag to control the emitting of either CUDA
+    * or OpenCL.
+    */
+   public static boolean emitOcl = true;
+
    public final static String arrayLengthMangleSuffix = "__javaArrayLength";
 
    public final static String arrayDimMangleSuffix = "__javaArrayDimension";
