@@ -813,8 +813,10 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    public void writePragma(String _name, boolean _enable) {
-      write("#pragma OPENCL EXTENSION " + _name + " : " + (_enable ? "en" : "dis") + "able");
-      newLine();
+      if (BlockWriter.emitOcl) {
+          write("#pragma OPENCL EXTENSION " + _name + " : " + (_enable ? "en" : "dis") + "able");
+          newLine();
+      }
    }
 
    public final static String __local = "__local";
@@ -1237,22 +1239,43 @@ public abstract class KernelWriter extends BlockWriter{
       // }
 
       // Heap allocation
-      write("static __global void *alloc(__global void *heap, " +
-              "volatile __global uint *free_index, unsigned int heap_size, " +
-              "int nbytes, int *alloc_failed) {");
-      in();
-      newLine();
-      {
-        writeln("__global unsigned char *cheap = (__global unsigned char *)heap;");
-        writeln("uint rounded = nbytes + (8 - (nbytes % 8));");
-        writeln("uint offset = atomic_add(free_index, rounded);");
-        writeln("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
-        write("else return (__global void *)(cheap + offset);");
+      if (BlockWriter.emitOcl) {
+          write("static __global void *alloc(__global void *heap, " +
+                  "volatile __global uint *free_index, unsigned int heap_size, " +
+                  "int nbytes, int *alloc_failed) {");
+          in();
+          newLine();
+          {
+            writeln("__global unsigned char *cheap = (__global unsigned char *)heap;");
+            writeln("uint rounded = nbytes + (8 - (nbytes % 8));");
+            writeln("uint offset = atomic_add(free_index, rounded);");
+            writeln("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
+            write("else return (__global void *)(cheap + offset);");
+          }
+          out();
+          newLine();
+          write("}");
+          newLine();
+      } else {
+          write("static __device__ void *alloc(void *heap, " +
+                  "volatile unsigned *free_index, unsigned int heap_size, " +
+                  "int nbytes, int *alloc_failed) {");
+          in();
+          newLine();
+          {
+            writeln("unsigned char *cheap = (unsigned char *)heap;");
+            writeln("unsigned rounded = nbytes + (8 - (nbytes % 8));");
+            writeln("unsigned offset = atomicAdd((unsigned int *)free_index, rounded);");
+            writeln("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
+            write("else return (void *)(cheap + offset);");
+          }
+          out();
+          newLine();
+          write("}");
+          newLine();
       }
-      out();
-      newLine();
-      write("}");
-      newLine();
+
+      writeln("typedef struct org_apache_spark_rdd_cl_tests_PrimitiveInputPrimitiveOutputTest_s org_apache_spark_rdd_cl_tests_PrimitiveInputPrimitiveOutputTest;");
 
       // Emit structs for oop transformation accessors
       List<String> lexicalOrdering = _entryPoint.getLexicalOrderingOfObjectClasses();
