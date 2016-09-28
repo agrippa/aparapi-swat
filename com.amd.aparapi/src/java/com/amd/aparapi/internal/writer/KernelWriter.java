@@ -1010,7 +1010,7 @@ public abstract class KernelWriter extends BlockWriter{
    private void writeNormalizeToHeap(String varname, String castTo) {
        final String addressSpace = (BlockWriter.emitOcl ? "__global " : "");
        writeln(varname + " = " +
-               "(" + castTo + " *)(((" + addressSpace + "char *)" + varname + ") - " +
+               "(" + addressSpace + castTo + " *)(((" + addressSpace + "char *)" + varname + ") - " +
                "((" + addressSpace + "char *)heap));");
    }
 
