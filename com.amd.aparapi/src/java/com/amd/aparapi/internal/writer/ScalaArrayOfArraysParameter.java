@@ -59,7 +59,7 @@ public class ScalaArrayOfArraysParameter extends ScalaArrayParameter {
 
     @Override
     public String getStructString(KernelWriter writer) {
-        return "__global " + primitiveElementType + "* " + name;
+        return (BlockWriter.emitOcl ? "__global " : "") + primitiveElementType + "* " + name;
     }
 
     @Override

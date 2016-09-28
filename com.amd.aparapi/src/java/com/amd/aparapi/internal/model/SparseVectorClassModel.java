@@ -8,6 +8,7 @@ import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 import com.amd.aparapi.internal.model.HardCodedMethodModel.MethodDefGenerator;
 import com.amd.aparapi.internal.writer.KernelWriter;
+import com.amd.aparapi.internal.writer.BlockWriter;
 
 public class SparseVectorClassModel extends HardCodedClassModel {
     private static final String className = "org.apache.spark.mllib.linalg.SparseVector";
@@ -55,13 +56,13 @@ public class SparseVectorClassModel extends HardCodedClassModel {
             public String getMethodArgs(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
-                return "__global " + owner + " *this";
+                return (BlockWriter.emitOcl ? "__global " : "") + owner + " *this_ptr";
             }
 
             @Override
             public String getMethodBody(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
-                return "    return (this->size);\n";
+                return "    return (this_ptr->size);\n";
             }
         };
         methods.add(new HardCodedMethodModel("size", "()I", sizeGen, false, null));
@@ -70,7 +71,7 @@ public class SparseVectorClassModel extends HardCodedClassModel {
             @Override
             public String getMethodReturnType(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
-                return "__global int*";
+                return (BlockWriter.emitOcl ? "__global " : "") + "int*";
             }
 
             @Override
@@ -83,13 +84,13 @@ public class SparseVectorClassModel extends HardCodedClassModel {
             public String getMethodArgs(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
-                return "__global " + owner + " *this";
+                return (BlockWriter.emitOcl ? "__global " : "") + owner + " *this_ptr";
             }
 
             @Override
             public String getMethodBody(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
-                return "    return (this->indices);\n";
+                return "    return (this_ptr->indices);\n";
             }
         };
         methods.add(new HardCodedMethodModel("indices", "()[I", indicesGen, false, null));
@@ -98,7 +99,7 @@ public class SparseVectorClassModel extends HardCodedClassModel {
             @Override
             public String getMethodReturnType(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
-                return "__global double*";
+                return (BlockWriter.emitOcl ? "__global " : "") + "double*";
             }
 
             @Override
@@ -111,13 +112,13 @@ public class SparseVectorClassModel extends HardCodedClassModel {
             public String getMethodArgs(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
-                return "__global " + owner + " *this";
+                return (BlockWriter.emitOcl ? "__global " : "") + owner + " *this_ptr";
             }
 
             @Override
             public String getMethodBody(HardCodedMethodModel method,
                     SparseVectorClassModel classModel, KernelWriter writer) {
-                return "    return (this->values);\n";
+                return "    return (this_ptr->values);\n";
             }
         };
         methods.add(new HardCodedMethodModel("values", "()[D", valuesGen, false, null));

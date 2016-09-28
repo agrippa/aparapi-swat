@@ -16,7 +16,7 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
     protected final List<Boolean> typeParameterIsObject;
 
     public ScalaArrayParameter(String fullSig, String name, DIRECTION dir) {
-        this.name = name;
+        this.name = name.replace('$', '_');
         this.clazz = null;
         this.dir = dir;
 
@@ -71,7 +71,7 @@ public abstract class ScalaArrayParameter implements ScalaParameter {
             DIRECTION dir) {
         this.type = type.trim();
         this.clazz = clazz;
-        this.name = name;
+        this.name = name.replace('$', '_');
         this.dir = dir;
         this.typeParameterDescs = new LinkedList<String>();
         this.typeParameterIsObject = new LinkedList<Boolean>();

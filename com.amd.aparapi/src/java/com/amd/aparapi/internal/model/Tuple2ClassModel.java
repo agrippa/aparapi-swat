@@ -8,6 +8,7 @@ import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 import com.amd.aparapi.internal.model.HardCodedMethodModel.MethodDefGenerator;
 import com.amd.aparapi.internal.writer.KernelWriter;
+import com.amd.aparapi.internal.writer.BlockWriter;
 
 public class Tuple2ClassModel extends HardCodedClassModel {
     private static Class<?> clz;
@@ -97,7 +98,7 @@ public class Tuple2ClassModel extends HardCodedClassModel {
                               }
                           }
                       });
-                  type = "__global " + cm.getMangledClassName() + " * ";
+                  type = (BlockWriter.emitOcl ? "__global " : "") + cm.getMangledClassName() + " * ";
                 } else {
                   type = converted;
                 }
@@ -108,7 +109,7 @@ public class Tuple2ClassModel extends HardCodedClassModel {
             public String getMethodReturnType(HardCodedMethodModel method,
                     Tuple2ClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
-                return "__global " + owner + "*";
+                return (BlockWriter.emitOcl ? "__global " : "") + owner + "*";
             }
 
             @Override
@@ -123,7 +124,7 @@ public class Tuple2ClassModel extends HardCodedClassModel {
                 String owner = method.getOwnerClassMangledName();
                 final String firstType = convertDescToType(classModel.getFirstTypeDesc(), writer);
                 final String secondType = convertDescToType(classModel.getSecondTypeDesc(), writer);
-                return "__global " + owner + " *this, " + firstType + " one, " +
+                return (BlockWriter.emitOcl ? "__global " : "") + owner + " *this_ptr, " + firstType + " one, " +
                     secondType + " two";
             }
 
@@ -131,9 +132,9 @@ public class Tuple2ClassModel extends HardCodedClassModel {
             public String getMethodBody(HardCodedMethodModel method,
                     Tuple2ClassModel classModel, KernelWriter writer) {
                 StringBuilder sb = new StringBuilder();
-                sb.append("   this->_1 = one;\n");
-                sb.append("   this->_2 = two;\n");
-                sb.append("   return this;\n");
+                sb.append("   this_ptr->_1 = one;\n");
+                sb.append("   this_ptr->_2 = two;\n");
+                sb.append("   return this_ptr;\n");
                 return sb.toString();
             }
         };

@@ -62,7 +62,8 @@ public class ScalaDenseVectorArrayParameter extends ScalaArrayParameter {
 
     @Override
     public String getStructString(KernelWriter writer) {
-        return "__global org_apache_spark_mllib_linalg_DenseVector *" + name + "; ";
+        return (BlockWriter.emitOcl ? "__global " : "") + "org_apache_spark_mllib_linalg_DenseVector *" +
+            name + "; ";
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.amd.aparapi.internal.model;
 
 import com.amd.aparapi.internal.writer.KernelWriter;
+import com.amd.aparapi.internal.writer.BlockWriter;
 
 public class HardCodedMethodModel extends MethodModel {
     private final String name;
@@ -45,7 +46,11 @@ public class HardCodedMethodModel extends MethodModel {
         final String args = methodDef.getMethodArgs(this, classModel, writer);
         sb.append("static " + returnType + " " + methodName + "(");
         if (writer.getEntryPoint().requiresHeap()) {
-            sb.append(KernelWriter.functionArgumentsPrefix);
+            if (BlockWriter.emitOcl) {
+                sb.append(KernelWriter.oclFunctionArgumentsPrefix);
+            } else {
+                sb.append(KernelWriter.cudaFunctionArgumentsPrefix);
+            }
             if (args.length() > 0) sb.append(", ");
         }
         sb.append(args + ") {\n");

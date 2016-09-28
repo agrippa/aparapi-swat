@@ -49,7 +49,7 @@ public class ScalaPrimitiveOrObjectArrayParameter extends ScalaArrayParameter {
         if (writer.multiInput) {
             return type.replace('.', '_') + " " + name;
         } else {
-            return "__global " + type.replace('.', '_') + "* " + name;
+            return (BlockWriter.emitOcl ? "__global " : "") + type.replace('.', '_') + "* " + name;
         }
     }
 

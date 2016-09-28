@@ -8,6 +8,7 @@ import com.amd.aparapi.internal.instruction.InstructionSet.TypeSpec;
 import com.amd.aparapi.internal.exception.AparapiException;
 import com.amd.aparapi.internal.model.HardCodedMethodModel.MethodDefGenerator;
 import com.amd.aparapi.internal.writer.KernelWriter;
+import com.amd.aparapi.internal.writer.BlockWriter;
 
 public class DenseVectorClassModel extends HardCodedClassModel {
     private static final String className = "org.apache.spark.mllib.linalg.DenseVector";
@@ -55,13 +56,13 @@ public class DenseVectorClassModel extends HardCodedClassModel {
             public String getMethodArgs(HardCodedMethodModel method,
                     DenseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
-                return "__global " + owner + " *this";
+                return (BlockWriter.emitOcl ? "__global " : "") + owner + " *this_ptr";
             }
 
             @Override
             public String getMethodBody(HardCodedMethodModel method,
                     DenseVectorClassModel classModel, KernelWriter writer) {
-                return "    return (this->size);\n";
+                return "    return (this_ptr->size);\n";
             }
         };
         methods.add(new HardCodedMethodModel("size", "()I", sizeGen, false, null));
@@ -83,13 +84,13 @@ public class DenseVectorClassModel extends HardCodedClassModel {
             public String getMethodArgs(HardCodedMethodModel method,
                     DenseVectorClassModel classModel, KernelWriter writer) {
                 String owner = method.getOwnerClassMangledName();
-                return "__global " + owner + " *this, int index";
+                return (BlockWriter.emitOcl ? "__global " : "") + owner + " *this_ptr, int index";
             }
 
             @Override
             public String getMethodBody(HardCodedMethodModel method,
                     DenseVectorClassModel classModel, KernelWriter writer) {
-                return "    return (this->values)[this->tiling * index];\n";
+                return "    return (this_ptr->values)[this_ptr->tiling * index];\n";
             }
         };
         methods.add(new HardCodedMethodModel("apply", "(I)D", applyGen, false, null));

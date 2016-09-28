@@ -1708,7 +1708,7 @@ public abstract class MethodModel {
          }
 
          @Override public String getVariableName() {
-            return (name);
+            return (name.replace('$', '_'));
          }
 
          @Override public String getVariableDescriptor() {

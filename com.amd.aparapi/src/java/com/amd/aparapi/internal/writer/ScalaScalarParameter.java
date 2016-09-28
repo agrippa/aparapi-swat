@@ -14,7 +14,7 @@ public class ScalaScalarParameter implements ScalaParameter {
         } else {
             throw new RuntimeException(type);
         }
-        this.name = name;
+        this.name = name.replace('$', '_');
     }
 
     @Override

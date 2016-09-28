@@ -1271,7 +1271,7 @@ public abstract class ClassModel {
 
             @Override
             public String getVariableName() {
-               return (constantPool.getUTF8Entry(variableNameIndex).getUTF8());
+               return (constantPool.getUTF8Entry(variableNameIndex).getUTF8().replace('$', '_'));
             }
 
             @Override

@@ -54,9 +54,12 @@ import java.util.*;
 
 public abstract class KernelWriter extends BlockWriter{
 
-   public final static String functionArgumentsPrefix = "__global void * " +
+   public final static String oclFunctionArgumentsPrefix = "__global void * " +
        "restrict __swat_heap, __global uint * restrict __swat_free_index, " +
        "int * restrict __swat_alloc_failed, const int __swat_heap_size";
+   public final static String cudaFunctionArgumentsPrefix = "void * " +
+       "__swat_heap, unsigned * __swat_free_index, int * __swat_alloc_failed, " +
+       "const int __swat_heap_size";
 
    public final static String BROADCAST_VALUE_SIG =
        "org/apache/spark/broadcast/Broadcast.value()Ljava/lang/Object;";
@@ -207,13 +210,16 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    @Override public void writeReturn(Return ret) throws CodeGenException {
-     write("return");
      if (processingConstructor) {
-       write(" (this_ptr)");
+       write("return (this_ptr)");
      } else if (ret.getStackConsumeCount() > 0) {
-       write("(");
-       writeInstruction(ret.getFirstChild());
-       write(")");
+       if (ret.getFirstChild() instanceof CompositeArbitraryScopeInstruction) {
+           writeSequence(((CompositeArbitraryScopeInstruction)ret.getFirstChild()).getFirstChild(), null, "return ");
+       } else {
+           write("return(");
+           writeInstruction(ret.getFirstChild());
+           write(")");
+       }
      }
    }
 
@@ -248,8 +254,9 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    private String generateAllocHelper(String allocVarName, String size, String typeName) {
-     String allocStr = "__global " + typeName + " * " + allocVarName +
-       " = (__global " + typeName + " *)alloc(__swat_heap, __swat_free_index, " +
+     final String space = (BlockWriter.emitOcl ? "__global " : "");
+     String allocStr = space + typeName + " * " + allocVarName +
+       " = (" + space + typeName + " *)alloc(__swat_heap, __swat_free_index, " +
        "__swat_heap_size, " + size + ", __swat_alloc_failed);";
      String indentedAllocStr = doIndent(allocStr);
 
@@ -299,10 +306,11 @@ public abstract class KernelWriter extends BlockWriter{
         * Though I guess at that point you might as well just use the input as
         * the output, which would work (I think?).
         */
-       String storeLengthStr = "*((__global long *)" + allocVarName + ") = (" +
+       final String addressSpace = (BlockWriter.emitOcl ? "__global " : "");
+       String storeLengthStr = "*((" + addressSpace + "long *)" + allocVarName + ") = (" +
            countStr + ");";
-       String fixAllocVar = allocVarName + " = (__global " + typeStr +
-           " *)(((__global long *)" + allocVarName + ") + 1); ";
+       String fixAllocVar = allocVarName + " = (" + addressSpace + typeStr +
+           " *)(((" + addressSpace + "long *)" + allocVarName + ") + 1); ";
 
        writeBeforeCurrentLine(allocStr + " " + storeLengthStr + " " + fixAllocVar);
        write(allocVarName);
@@ -511,7 +519,7 @@ public abstract class KernelWriter extends BlockWriter{
          String getterFieldName = null;
          FieldEntry getterField = null;
          if (m != null && m.isGetter()) {
-            getterFieldName = m.getGetterField();
+            getterFieldName = m.getGetterField().replace('$', '_');
          }
 
          if (getterFieldName != null) {
@@ -576,7 +584,7 @@ public abstract class KernelWriter extends BlockWriter{
                }
                //assert refAccess instanceof I_GETFIELD : "ref should come from getfield";
                final String fieldName = ((AccessField) refAccess).getConstantPoolFieldEntry().getNameAndTypeEntry()
-                     .getNameUTF8Entry().getUTF8();
+                     .getNameUTF8Entry().getUTF8().replace('$', '_');
                write(" (this_ptr->" + fieldName);
                write("[");
                writeInstruction(arrayAccess.getArrayIndex());
@@ -636,7 +644,7 @@ public abstract class KernelWriter extends BlockWriter{
                 }
                 String fieldName = ((I_GETFIELD)target)
                     .getConstantPoolFieldEntry().getNameAndTypeEntry()
-                    .getNameUTF8Entry().getUTF8();
+                    .getNameUTF8Entry().getUTF8().replace('$', '_');
                 write("this_ptr->" + fieldName);
             } else if (isDenseVectorCreate) {
                 String allocVarName = "__alloc" + (countAllocs++);
@@ -644,32 +652,49 @@ public abstract class KernelWriter extends BlockWriter{
                         "sizeof(org_apache_spark_mllib_linalg_DenseVector)",
                         "org_apache_spark_mllib_linalg_DenseVector");
                 writeBeforeCurrentLine(allocStr);
-                write("({ " + allocVarName + "->values = ");
-                writeInstruction(_methodCall.getArg(0));
-                write("; " + allocVarName + "->size = *(((__global long *)" +
-                        allocVarName + "->values) - 1); ");
-                write("; " + allocVarName + "->tiling = 1; ");
-                write(allocVarName);
-                write("; })");
+                if (BlockWriter.emitOcl) {
+                    write("({ " + allocVarName + "->values = ");
+                    writeInstruction(_methodCall.getArg(0));
+                    write("; " + allocVarName + "->size = *(((" + (BlockWriter.emitOcl ? "__global " : "") + "long *)" +
+                            allocVarName + "->values) - 1); ");
+                    write("; " + allocVarName + "->tiling = 1; ");
+                    write(allocVarName);
+                    write("; })");
+                } else {
+                    write("dense_vec_fill(" + allocVarName + ", ");
+                    writeInstruction(_methodCall.getArg(0));
+                    write(", *(((" + (BlockWriter.emitOcl ? "__global " : "") + "long *)" +
+                            allocVarName + "->values) - 1)");
+                    write(", 1)");
+                }
             } else if (isSparseVectorCreate) {
                 String allocVarName = "__alloc" + (countAllocs++);
                 String allocStr = generateAllocHelper(allocVarName,
                         "sizeof(org_apache_spark_mllib_linalg_SparseVector)",
                         "org_apache_spark_mllib_linalg_SparseVector");
                 writeBeforeCurrentLine(allocStr);
-                write("({ " + allocVarName + "->size = ");
-                writeInstruction(_methodCall.getArg(0));
-                write("; ");
-                write("; " + allocVarName + "->tiling = 1; ");
-                write(allocVarName + "->indices = ");
-                writeInstruction(_methodCall.getArg(1));
-                write("; ");
-                write(allocVarName + "->values = ");
-                writeInstruction(_methodCall.getArg(2));
-                write("; ");
-                write(allocVarName);
-                write("; })");
-
+                if (BlockWriter.emitOcl) {
+                    write("({ " + allocVarName + "->size = ");
+                    writeInstruction(_methodCall.getArg(0));
+                    write("; ");
+                    write("; " + allocVarName + "->tiling = 1; ");
+                    write(allocVarName + "->indices = ");
+                    writeInstruction(_methodCall.getArg(1));
+                    write("; ");
+                    write(allocVarName + "->values = ");
+                    writeInstruction(_methodCall.getArg(2));
+                    write("; ");
+                    write(allocVarName);
+                    write("; })");
+                } else {
+                    write("sparse_vec_fill(" + allocVarName + ", ");
+                    writeInstruction(_methodCall.getArg(2));
+                    write(", ");
+                    writeInstruction(_methodCall.getArg(1));
+                    write(", ");
+                    writeInstruction(_methodCall.getArg(0));
+                    write(", 1)");
+                }
             } else {
                // Must be a library call like rsqrt
                if (!isMapped && !isScalaMapped) {
@@ -716,7 +741,7 @@ public abstract class KernelWriter extends BlockWriter{
                      if (refAccess instanceof AccessField) {
                          final String fieldName = ((AccessField) refAccess)
                              .getConstantPoolFieldEntry().getNameAndTypeEntry()
-                             .getNameUTF8Entry().getUTF8();
+                             .getNameUTF8Entry().getUTF8().replace('$', '_');
                          if (haveFirstArg) write(", ");
                          write("&(this_ptr->" + fieldName);
                          write("[");
@@ -748,7 +773,7 @@ public abstract class KernelWriter extends BlockWriter{
                          }
                          final String fieldName = ((AccessField)valueInvoke.getPrevPC())
                              .getConstantPoolFieldEntry().getNameAndTypeEntry()
-                             .getNameUTF8Entry().getUTF8();
+                             .getNameUTF8Entry().getUTF8().replace('$', '_');
                          if (haveFirstArg) write(", ");
                          write("&(this_ptr->" + fieldName);
                          write("[");
@@ -795,7 +820,7 @@ public abstract class KernelWriter extends BlockWriter{
                      FieldEntry entry = fieldAccess.getConstantPoolFieldEntry();
 
                      String fieldName = entry.getNameAndTypeEntry()
-                         .getNameUTF8Entry().getUTF8();
+                         .getNameUTF8Entry().getUTF8().replace('$', '_');
                      String fieldDesc = entry.getNameAndTypeEntry()
                          .getDescriptorUTF8Entry().getUTF8();
                      if (fieldDesc.startsWith("[")) {
@@ -902,9 +927,9 @@ public abstract class KernelWriter extends BlockWriter{
 
                String cType = convertType(field.desc, true);
                if (field.desc.startsWith("L")) {
-                   cType = "__global " + removeBadChars(cType) + " *";
+                   cType = (BlockWriter.emitOcl ? "__global " : "") + removeBadChars(cType) + " *";
                } else if (field.desc.startsWith("[")) {
-                   cType = "__global " + cType;
+                   cType = (BlockWriter.emitOcl ? "__global " : "") + cType;
                }
                assert cType != null : "could not find type for " + field.desc;
                writeln(cType + " " + field.name + ";");
@@ -982,10 +1007,11 @@ public abstract class KernelWriter extends BlockWriter{
        return true;
    }
 
-   private void writeNormalizeToHeap(String varname) {
+   private void writeNormalizeToHeap(String varname, String castTo) {
+       final String addressSpace = (BlockWriter.emitOcl ? "__global " : "");
        writeln(varname + " = " +
-               "((__global char *)" + varname + ") - " +
-               "((__global char *)heap);");
+               "(" + castTo + " *)(((" + addressSpace + "char *)" + varname + ") - " +
+               "((" + addressSpace + "char *)heap));");
    }
 
    // member == 1 or member == 2
@@ -1036,7 +1062,7 @@ public abstract class KernelWriter extends BlockWriter{
            }
 
            if (!topLevel) {
-               writeNormalizeToHeap(fieldName);
+               writeNormalizeToHeap(fieldName, "void");
            }
 
            if (topLevel) {
@@ -1053,13 +1079,13 @@ public abstract class KernelWriter extends BlockWriter{
    }
 
    private void writeDenseVectorValueUpdate(String varname) {
-       writeNormalizeToHeap(varname + "->values");
+       writeNormalizeToHeap(varname + "->values", "double");
        writeln(varname + "->tiling = iter;");
    }
 
    private void writeSparseVectorValueUpdate(String varname) {
-       writeNormalizeToHeap(varname + "->values");
-       writeNormalizeToHeap(varname + "->indices");
+       writeNormalizeToHeap(varname + "->values", "double");
+       writeNormalizeToHeap(varname + "->indices", "int");
        writeln(varname + "->tiling = iter;");
    }
 
@@ -1085,8 +1111,8 @@ public abstract class KernelWriter extends BlockWriter{
        } else if (outParam instanceof ScalaArrayOfArraysParameter) {
            writeln(outParam.getName() + "_iters[i] = iter;");
            writeln(outParam.getName() + "[i] = " +
-                   "((__global char *)result) - " +
-                   "((__global char *)heap);");
+                   "((" + (BlockWriter.emitOcl ? "__global" : "") + " char *)result) - " +
+                   "((" + (BlockWriter.emitOcl ? "__global" : "") + " char *)heap);");
        }
    }
 
@@ -1172,16 +1198,16 @@ public abstract class KernelWriter extends BlockWriter{
             final StringBuilder lenAssignLine = new StringBuilder();
 
             String suffix = "";
-            String lenName = field.getName() + BlockWriter.arrayLengthMangleSuffix + suffix;
+            String lenName = field.getName().replace('$', '_') + BlockWriter.arrayLengthMangleSuffix + suffix;
 
             lenStructLine.append("int " + lenName);
             thisStruct.add(lenStructLine.toString());
 
             if (!multiInput) {
                lenAssignLine.append("this_ptr->");
-               lenAssignLine.append(lenName);
+               lenAssignLine.append(lenName.replace('$', '_'));
                lenAssignLine.append(" = ");
-               lenAssignLine.append(lenName);
+               lenAssignLine.append(lenName.replace('$', '_'));
                assigns.add(lenAssignLine.toString());
 
                lenArgLine.append("int " + lenName);
@@ -1225,7 +1251,7 @@ public abstract class KernelWriter extends BlockWriter{
          writePragma("cl_khr_int64_extended_atomics", true);
       }
 
-      if (usesAtomics) {
+      if (usesAtomics && BlockWriter.emitOcl) {
          write("static int atomicAdd(__global int *_arr, int _index, int _delta){");
          in();
          {
@@ -1279,6 +1305,21 @@ public abstract class KernelWriter extends BlockWriter{
           newLine();
           write("}");
           newLine();
+          writeln("template<typename T>");
+          writeln("inline T *dense_vec_fill(T *alloc, double *vals, unsigned size, unsigned tiling) {");
+          writeln("    alloc->values = vals;");
+          writeln("    alloc->size = size;");
+          writeln("    alloc->tiling = tiling;");
+          writeln("    return alloc;");
+          writeln("}");
+          writeln("template<typename T>");
+          writeln("inline T *sparse_vec_fill(T *alloc, double *vals, int *indices, unsigned size, unsigned tiling) {");
+          writeln("    alloc->values = vals;");
+          writeln("    alloc->indices = indices;");
+          writeln("    alloc->size = size;");
+          writeln("    alloc->tiling = tiling;");
+          writeln("    return alloc;");
+          writeln("}");
       }
 
       // Emit structs for oop transformation accessors
@@ -1385,18 +1426,18 @@ public abstract class KernelWriter extends BlockWriter{
          if (mm.getSimpleName().equals("<init>")) {
            // Transform constructors to return a reference to their object type
            ClassModel owner = mm.getMethod().getClassModel();
-           write("static " + addressSpace + " " +
+           write("static " + (BlockWriter.emitOcl ? addressSpace : "") + " " +
                    owner.getClassWeAreModelling().getName().replace('.', '_') +
                    " * ");
            processingConstructor = true;
          } else if (returnType.startsWith("L")) {
-           write("static __global " + fullReturnType);
+           write("static " + (BlockWriter.emitOcl ? "__global " : "") + fullReturnType);
            write(" *");
            processingConstructor = false;
          } else {
            // Arrays always map to __private or__global arrays
            if (returnType.startsWith("[")) {
-              write("static __global ");
+              write("static " + (BlockWriter.emitOcl ? "__global " : ""));
            } else {
              write("static ");
            }
@@ -1409,7 +1450,11 @@ public abstract class KernelWriter extends BlockWriter{
          boolean alreadyHasFirstArg = false;
 
          if (_entryPoint.requiresHeap()) {
-             write(functionArgumentsPrefix);
+             if (BlockWriter.emitOcl) {
+                 write(oclFunctionArgumentsPrefix);
+             } else {
+                 write(cudaFunctionArgumentsPrefix);
+             }
              alreadyHasFirstArg = true;
          }
 
@@ -1428,7 +1473,9 @@ public abstract class KernelWriter extends BlockWriter{
                   final ClassModel c = classIter.next();
                   if (mm.getMethod().getClassModel() == c) {
                      if (alreadyHasFirstArg) write(", ");
-                     write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " + mm.getMethod().getClassModel()
+                     String space = (isParallelModel ? (processingConstructor ? "__local" : "") : "__global");
+                     if (!BlockWriter.emitOcl) space = "";
+                     write(space + " " + mm.getMethod().getClassModel()
                              .getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this_ptr");
                      alreadyHasFirstArg = true;
@@ -1436,7 +1483,9 @@ public abstract class KernelWriter extends BlockWriter{
                   } else if (mm.getMethod().getClassModel().isSuperClass(
                               c.getClassWeAreModelling())) {
                      if (alreadyHasFirstArg) write(", ");
-                     write((isParallelModel ? (processingConstructor ? "__local" : "") : "__global") + " " +
+                     String space = (isParallelModel ? (processingConstructor ? "__local" : "") : "__global");
+                     if (!BlockWriter.emitOcl) space = "";
+                     write(space + " " +
                              c.getClassWeAreModelling().getName().replace('.',
                                  '_') + " *this_ptr");
                      alreadyHasFirstArg = true;
@@ -1457,11 +1506,11 @@ public abstract class KernelWriter extends BlockWriter{
                }
 
                // Arrays always map to __global arrays
-               if (descriptor.startsWith("[")) {
+               if (BlockWriter.emitOcl && descriptor.startsWith("[")) {
                   write(" __global ");
                }
 
-               if (descriptor.startsWith("L")) {
+               if (BlockWriter.emitOcl && descriptor.startsWith("L")) {
                  write("__global ");
                }
                final String convertedType;
@@ -1553,9 +1602,8 @@ public abstract class KernelWriter extends BlockWriter{
                         "restrict free_index, unsigned int heap_size, __global " +
                         "int * restrict processing_succeeded");
             } else {
-                write(", void * restrict heap, unsigned * " +
-                        "restrict free_index, unsigned int heap_size, " +
-                        "int * restrict processing_succeeded");
+                write(", void * heap, unsigned * free_index, unsigned int " +
+                        "heap_size, int * processing_succeeded");
             }
          }
          write(", int N, int iter");
@@ -1582,8 +1630,9 @@ public abstract class KernelWriter extends BlockWriter{
           if (p.getClazz() != null &&
                   _entryPoint.getHardCodedClassModels().haveClassModelFor(
                       p.getClazz())) {
-            writeln("__global " + p.getType() + " *my_" + p.getName() + " = " +
-                p.getName() + " + get_global_id(0);");
+            writeln((BlockWriter.emitOcl ? "__global " : "") + p.getType() + " *my_" + p.getName() + " = " +
+                p.getName() + " + " +
+                (BlockWriter.emitOcl ? "get_global_id(0)" : "(blockIdx.x * blockDim.x + threadIdx.x)") + ";");
           }
         }
       }
@@ -1629,13 +1678,13 @@ public abstract class KernelWriter extends BlockWriter{
          startingArguments.append("this_ptr");
 
          if (outParam.getClazz() != null) {
-           write("__global " + outParam.getType() + "* result = " +
+           write((BlockWriter.emitOcl ? "__global " : "") + outParam.getType() + "* result = " +
                _entryPoint.getMethodModel().getName() + "(" +
                startingArguments.toString());
          } else if (outParam instanceof ScalaArrayOfArraysParameter) {
            final String primitiveType =
                ((ScalaArrayOfArraysParameter)outParam).primitiveElementType;
-           write("__global " + primitiveType + "* result = " +
+           write((BlockWriter.emitOcl ? "__global " : "") + primitiveType + "* result = " +
                    _entryPoint.getMethodModel().getName() + "(" +
                    startingArguments.toString());
          } else {

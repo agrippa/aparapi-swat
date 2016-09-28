@@ -57,7 +57,8 @@ public class ScalaSparseVectorArrayParameter extends ScalaArrayParameter {
 
    @Override
    public String getStructString(KernelWriter writer) {
-       return "__global org_apache_spark_mllib_linalg_SparseVector *" + name + "; ";
+       return (BlockWriter.emitOcl ? "__global " : "") + "org_apache_spark_mllib_linalg_SparseVector *" +
+           name + "; ";
    }
 
    @Override

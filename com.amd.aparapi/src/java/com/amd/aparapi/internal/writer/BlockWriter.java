@@ -296,13 +296,15 @@ public abstract class BlockWriter{
       }
    }
 
-   public void writeSequence(Instruction _first, Instruction _last) throws CodeGenException {
-
+   public void writeSequence(Instruction _first, Instruction _last, String insertBeforeLast) throws CodeGenException {
       for (Instruction instruction = _first; instruction != _last; instruction = instruction.getNextExpr()) {
          if (instruction instanceof CompositeInstruction) {
             writeComposite((CompositeInstruction) instruction);
          } else if (!instruction.getByteCode().equals(ByteCode.NONE)) {
             newLine();
+            if (instruction.getNextExpr() == _last) {
+                write(insertBeforeLast);
+            }
             boolean writeCheck = writeInstruction(instruction);
             write(";");
             if (writeCheck) {
@@ -310,6 +312,10 @@ public abstract class BlockWriter{
             }
          }
       }
+   }
+
+   public void writeSequence(Instruction _first, Instruction _last) throws CodeGenException {
+       writeSequence(_first, _last, "");
    }
 
    protected void writeGetterBlock(FieldEntry accessorVariableFieldEntry) {
@@ -446,7 +452,7 @@ public abstract class BlockWriter{
          if (assignToLocalVariable.isDeclaration()) {
             final String descriptor = localVariableInfo.getVariableDescriptor();
             // Arrays always map to __global arrays
-            if (descriptor.startsWith("[") || descriptor.startsWith("L")) {
+            if (BlockWriter.emitOcl && (descriptor.startsWith("[") || descriptor.startsWith("L"))) {
                write(" __global ");
             }
 
@@ -475,7 +481,7 @@ public abstract class BlockWriter{
                  LocalVariableInfo srcInfo = ((AccessLocalVariable)src).getLocalVariableInfo();
                  final String descriptor = srcInfo.getVariableDescriptor();
                  // Arrays always map to __global arrays
-                 if (descriptor.startsWith("[") || descriptor.startsWith("L")) {
+                 if (BlockWriter.emitOcl && (descriptor.startsWith("[") || descriptor.startsWith("L"))) {
                     write(" __global ");
                  }
 
@@ -576,7 +582,7 @@ public abstract class BlockWriter{
                writeThisRef();
             }
          }
-         write(accessField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+         write(accessField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8().replace('$', '_'));
 
       } else if (_instruction instanceof I_ARRAYLENGTH) {
 
@@ -596,12 +602,12 @@ public abstract class BlockWriter{
             final String arrayName = nameAndTypeEntry.getNameUTF8Entry().getUTF8();
             String dimSuffix = isMultiDimensionalArray(nameAndTypeEntry) ?
                 Integer.toString(dim) : "";
-            write("this_ptr->" + arrayName + arrayLengthMangleSuffix + dimSuffix);
+            write("this_ptr->" + arrayName.replace('$', '_') + arrayLengthMangleSuffix + dimSuffix);
          } else if (load instanceof LocalVariableConstIndexLoad) {
              assert(dim == 1);
              final String arrayName = ((LocalVariableConstIndexLoad)load)
                  .getLocalVariableInfo().getVariableName();
-             write(arrayName + BlockWriter.arrayLengthMangleSuffix);
+             write(arrayName.replace('$', '_') + BlockWriter.arrayLengthMangleSuffix);
          }
       } else if (_instruction instanceof AssignToField) {
          final AssignToField assignedField = (AssignToField) _instruction;
@@ -616,7 +622,7 @@ public abstract class BlockWriter{
                writeThisRef();
             }
          }
-         write(assignedField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8());
+         write(assignedField.getConstantPoolFieldEntry().getNameAndTypeEntry().getNameUTF8Entry().getUTF8().replace('$', '_'));
          write("=");
          writeInstruction(assignedField.getValueToAssign());
       } else if (_instruction instanceof Constant<?>) {

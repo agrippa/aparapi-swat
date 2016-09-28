@@ -17,8 +17,9 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
     protected String getParameterStringFor(KernelWriter writer, int field) {
         final String param;
         if (!typeParameterIsObject(field)) {
-            param = "__global " + ClassModel.convert(
-                    typeParameterDescs.get(field), "", true) + "* restrict " + name + "_" + (field + 1);
+            param = (BlockWriter.emitOcl ? "__global " : "") + ClassModel.convert(
+                    typeParameterDescs.get(field), "", true) + "* " + (BlockWriter.emitOcl ? "restrict " : "") +
+                name + "_" + (field + 1);
         } else {
             String fieldDesc = typeParameterDescs.get(field);
             if (fieldDesc.charAt(0) != 'L' ||
@@ -45,8 +46,8 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
                     param = tmp.getOutputParameterString(writer);
                 }
             } else {
-                param = "__global " + KernelWriter.removeBadChars(fieldDesc) +
-                    "* restrict " + name + "_" + (field + 1);
+                param = (BlockWriter.emitOcl ? "__global " : "") + KernelWriter.removeBadChars(fieldDesc) +
+                    "* " + (BlockWriter.emitOcl ? "restrict " : "") + name + "_" + (field + 1);
             }
         }
         return param;
@@ -90,7 +91,7 @@ public class ScalaTuple2ArrayParameter extends ScalaArrayParameter {
             return getParameterStringFor(writer, 0) + "; " +
                 getParameterStringFor(writer, 1) + "; ";
         } else {
-            return "__global " + getType() + " *" + name;
+            return (BlockWriter.emitOcl ? "__global " : "") + getType() + " *" + name;
         }
     }
 
