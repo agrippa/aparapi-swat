@@ -663,9 +663,7 @@ public abstract class KernelWriter extends BlockWriter{
                 } else {
                     write("dense_vec_fill(" + allocVarName + ", ");
                     writeInstruction(_methodCall.getArg(0));
-                    write(", *(((" + (BlockWriter.emitOcl ? "__global " : "") + "long *)" +
-                            allocVarName + "->values) - 1)");
-                    write(", 1)");
+                    write(")");
                 }
             } else if (isSparseVectorCreate) {
                 String allocVarName = "__alloc" + (countAllocs++);
@@ -1124,6 +1122,17 @@ public abstract class KernelWriter extends BlockWriter{
 
       entryPoint = _entryPoint;
 
+      ScalaArrayParameter outParam = null;
+      for (ScalaArrayParameter p : params) {
+          if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
+              if (outParam != null) {
+                  throw new RuntimeException("Multiple output parameters?");
+              }
+              outParam = p;
+          }
+      }
+      if (outParam == null) throw new RuntimeException("No out param");
+
       for (final ClassModelField field : _entryPoint.getReferencedClassModelFields()) {
          final StringBuilder thisStructLine = new StringBuilder();
          final StringBuilder argLine = new StringBuilder();
@@ -1306,10 +1315,10 @@ public abstract class KernelWriter extends BlockWriter{
           write("}");
           newLine();
           writeln("template<typename T>");
-          writeln("inline T *dense_vec_fill(T *alloc, double *vals, unsigned size, unsigned tiling) {");
+          writeln("inline T *dense_vec_fill(T *alloc, double *vals) {");
           writeln("    alloc->values = vals;");
-          writeln("    alloc->size = size;");
-          writeln("    alloc->tiling = tiling;");
+          writeln("    alloc->size = *(((long *)vals) - 1);");
+          writeln("    alloc->tiling = 1;");
           writeln("    return alloc;");
           writeln("}");
           writeln("template<typename T>");
@@ -1402,12 +1411,16 @@ public abstract class KernelWriter extends BlockWriter{
          String addressSpace = isParallelModel ? "__local" : "__global";
 
          final String returnType = mm.getReturnType();
+
          this.currentReturnType = returnType;
          this.currentMethodModel = mm;
 
          final String fullReturnType;
          final String convertedReturnType = convertType(returnType, true);
-         if (returnType.startsWith("L")) {
+         if (mm == _entryPoint.getMethodModel()) {
+             // We already know the return type for the entrypoint
+             fullReturnType = outParam.getType().replace("[]", "*");
+         } else if (returnType.startsWith("L")) {
            SignatureEntry sigEntry =
                mm.getMethod().getAttributePool().getSignatureEntry();
            final TypeSignature sig;
@@ -1441,7 +1454,7 @@ public abstract class KernelWriter extends BlockWriter{
            } else {
              write("static ");
            }
-           write(fullReturnType);
+           write(fullReturnType + " ");
            processingConstructor = false;
          }
 
@@ -1551,7 +1564,6 @@ public abstract class KernelWriter extends BlockWriter{
          newLine();
       }
 
-      ScalaArrayParameter outParam = null;
       if (BlockWriter.emitOcl) {
           write("__kernel void run(");
       } else {
@@ -1578,10 +1590,6 @@ public abstract class KernelWriter extends BlockWriter{
             }
 
             if (p.getDir() == ScalaArrayParameter.DIRECTION.OUT) {
-               if (outParam != null) {
-                   throw new RuntimeException("Multiple output parameters?");
-               }
-               outParam = p;
                write(p.getOutputParameterString(this));
             } else {
                write(p.getInputParameterString(this));
@@ -1611,9 +1619,6 @@ public abstract class KernelWriter extends BlockWriter{
       write(") {");
       out();
       newLine();
-      if (outParam == null) {
-          throw new RuntimeException("outParam should not be null");
-      }
 
       writeln("This thisStruct;");
       writeln("This* this_ptr=&thisStruct;");
