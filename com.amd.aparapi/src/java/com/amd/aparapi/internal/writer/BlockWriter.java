@@ -75,6 +75,8 @@ public abstract class BlockWriter{
 
    public abstract void writeBeforeCurrentLine(String _string);
    public abstract void markCurrentPosition();
+   // public abstract void markNewExpression();
+   // public abstract void writeBeforeLastExpression(String _string);
    public abstract String eraseToMark();
 
    public abstract String getAllocCheck();
@@ -186,11 +188,31 @@ public abstract class BlockWriter{
          while (!(elseGoto.isBranch() && elseGoto.asBranch().isUnconditional())) {
             elseGoto = elseGoto.getNextExpr();
          }
-         writeBlock(blockStart, elseGoto);
+         if (BlockWriter.emitOcl) {
+             writeBlock(blockStart, elseGoto);
+         } else {
+             Instruction lastInsn = getLastInstructionInSequence(blockStart, elseGoto);
+             final String saveReturnType = KernelWriter.currentReturnType;
+             KernelWriter.currentReturnType = inferType(lastInsn);
+             write("([&] () -> " + KernelWriter.getTypenameForCurrentReturnType() + " {");
+             writeSequence(blockStart, elseGoto, "return ");
+             writeln("; })()");
+             KernelWriter.currentReturnType = saveReturnType;
+         }
          write(") : (");
          // write(" else ");
-         writeBlock(elseGoto.getNextExpr(), null);
-         write(");");
+         if (BlockWriter.emitOcl) {
+             writeBlock(elseGoto.getNextExpr(), null);
+         } else {
+             Instruction lastInsn = getLastInstructionInSequence(blockStart, elseGoto);
+             final String saveReturnType = KernelWriter.currentReturnType;
+             KernelWriter.currentReturnType = inferType(lastInsn);
+             write("([&] () -> " + KernelWriter.getTypenameForCurrentReturnType() + " {");
+             writeSequence(elseGoto.getNextExpr(), null, "return ");
+             writeln("; })()");
+             KernelWriter.currentReturnType = saveReturnType;
+         }
+         write(")");
       } else if (instruction instanceof CompositeForSunInstruction) {
          newLine();
          write("for (");
@@ -296,9 +318,20 @@ public abstract class BlockWriter{
       }
    }
 
+   protected Instruction getLastInstructionInSequence(Instruction _first, Instruction _last) {
+       Instruction last = null;
+       for (Instruction instruction = _first; instruction != _last; instruction = instruction.getNextExpr()) {
+           last = instruction;
+      }
+       return last;
+   }
+
    public void writeSequence(Instruction _first, Instruction _last, String insertBeforeLast) throws CodeGenException {
       for (Instruction instruction = _first; instruction != _last; instruction = instruction.getNextExpr()) {
          if (instruction instanceof CompositeInstruction) {
+            if (instruction.getNextExpr() == _last) {
+                write(insertBeforeLast);
+            }
             writeComposite((CompositeInstruction) instruction);
          } else if (!instruction.getByteCode().equals(ByteCode.NONE)) {
             newLine();
@@ -419,6 +452,157 @@ public abstract class BlockWriter{
        return method.getName() + "__tmp" + localVariableIndex;
    }
 
+   protected String inferConstructorType(ConstructorCall call) {
+     StringBuilder result = new StringBuilder();
+     I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
+     int nargs = invokeSpecial.getStackConsumeCount() - 1;
+     for (int a = 0; a < nargs; a++) {
+         Instruction arg = invokeSpecial.getArg(a);
+
+         final String s;
+         if (arg instanceof I_CHECKCAST) {
+             I_CHECKCAST cast = (I_CHECKCAST)arg;
+             s = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+         } else if (arg instanceof ConstructorCall) {
+             ConstructorCall constr = (ConstructorCall)arg;
+             s = inferConstructorType(constr);
+         } else if (arg instanceof I_INVOKESTATIC) {
+             I_INVOKESTATIC stat = (I_INVOKESTATIC)arg;
+             String name = stat.getConstantPoolMethodEntry().toString();
+             if (name.equals("scala/runtime/BoxesRunTime.boxToInteger(I)Ljava/lang/Integer;")) {
+                 s = "I";
+             } else if (name.equals("scala/runtime/BoxesRunTime.boxToFloat(F)Ljava/lang/Float;")) {
+                 s = "F";
+             } else if (name.equals("scala/runtime/BoxesRunTime.boxToDouble(D)Ljava/lang/Double;")) {
+                 s = "D";
+             } else {
+                 throw new RuntimeException("Unsupported: " + name);
+             }
+         } else if (arg instanceof I_I2F) {
+             s = "F";
+         } else if (arg instanceof I_FADD || arg instanceof I_FDIV ||
+                 arg instanceof I_FMUL || arg instanceof I_FSUB) {
+             s = "F";
+         } else if (arg instanceof I_DADD || arg instanceof I_DDIV ||
+                 arg instanceof I_DMUL || arg instanceof I_DSUB) {
+             s = "D";
+         } else if (arg instanceof I_IADD || arg instanceof I_IDIV ||
+                 arg instanceof I_IMUL || arg instanceof I_ISUB) {
+             s = "I";
+         } else if (arg instanceof I_FCONST_0 || arg instanceof I_FCONST_1 ||
+                 arg instanceof I_FCONST_2) {
+             s = "F";
+         } else if (arg instanceof I_LDC_W || arg instanceof I_LDC) {
+             String typeName = ((Constant)arg).getValue().getClass().getName();
+             if (typeName.equals("java.lang.Float")) {
+                 s = "F";
+             } else if (typeName.equals("java.lang.Integer")) {
+                 s = "I";
+             } else if (typeName.equals("java.lang.Double")) {
+                 s = "D";
+             } else {
+                 throw new RuntimeException(typeName);
+             }
+         } else if (arg instanceof I_INVOKEVIRTUAL) {
+             MethodEntryInfo info = ((I_INVOKEVIRTUAL)arg).getConstantPoolMethodEntry();
+             String desc = info.getMethodSig();
+             String returnType = desc.substring(desc.lastIndexOf(")") + 1);
+             s = returnType;
+         } else if (arg instanceof I_ILOAD_0 || arg instanceof I_ILOAD_1 ||
+                 arg instanceof I_ILOAD_2 || arg instanceof I_ILOAD_3 || arg instanceof I_ILOAD) {
+             s = "I";
+         } else if (arg instanceof I_DLOAD_0 || arg instanceof I_DLOAD_1 ||
+                 arg instanceof I_DLOAD_2 || arg instanceof I_DLOAD_3 || arg instanceof I_DLOAD) {
+             s = "D";
+         } else if (arg instanceof I_FLOAD_0 || arg instanceof I_FLOAD_1 ||
+                 arg instanceof I_FLOAD_2 || arg instanceof I_FLOAD_3 || arg instanceof I_FLOAD) {
+             s = "F";
+         } else if (arg instanceof I_ICONST_M1 || arg instanceof I_ICONST_0 ||
+                 arg instanceof I_ICONST_1 || arg instanceof I_ICONST_2 ||
+                 arg instanceof I_ICONST_3 || arg instanceof I_ICONST_4 ||
+                 arg instanceof I_ICONST_5) {
+             s = "I";
+         } else if (arg instanceof I_FCONST_0 || arg instanceof I_FCONST_1 ||
+                 arg instanceof I_FCONST_2) {
+             s = "F";
+         } else if (arg instanceof I_DCONST_0 || arg instanceof I_DCONST_1) {
+             s = "D";
+         } else {
+             throw new RuntimeException("Unable to do type inference on " + arg);
+         }
+
+         if (a != 0) result.append(",");
+         result.append(s);
+     }
+     String containerClass = invokeSpecial.getConstantPoolMethodEntry().getClassName();
+     if (containerClass.startsWith("scala/Tuple2")) {
+         containerClass = "scala/Tuple2";
+     }
+     return containerClass + "(" + result.toString() + ")";
+   }
+
+   protected String inferType(Instruction insn) {
+       boolean handled = false;
+
+       if (insn instanceof I_INVOKESPECIAL) {
+           I_INVOKESPECIAL invokeSpecial = (I_INVOKESPECIAL)insn;
+           MethodEntryInfo entry = invokeSpecial.getConstantPoolMethodEntry();
+           final String name = entry.getMethodName();
+           if (name.equals("<init>")) {
+               // A constructor
+               ConstructorCall call = new ConstructorCall(
+                       insn.getMethod(), invokeSpecial, null);
+               return inferConstructorType(call);
+           } else {
+               return entry.getMethodSig();
+           }
+       } else if (insn instanceof AccessArrayElement) {
+           AccessArrayElement access = (AccessArrayElement)insn;
+           Instruction arr = access.getArrayRef();
+           String arrayType = inferType(arr);
+           if (!arrayType.startsWith("[")) {
+               throw new RuntimeException("Unexpected array type " + arrayType);
+           }
+           return arrayType.substring(1);
+       } else if (insn instanceof ConstructorCall) {
+           return inferConstructorType((ConstructorCall)insn);
+       } else if (insn instanceof CompositeArbitraryScopeInstruction) {
+           CompositeArbitraryScopeInstruction scope = (CompositeArbitraryScopeInstruction)insn;
+           return inferType(getLastInstructionInSequence(scope.getFirstChild(), null));
+       } else if (insn instanceof CompositeIfElseInstruction) {
+           CompositeIfElseInstruction comp = (CompositeIfElseInstruction)insn;
+           Instruction firstBlockEnd = comp.getBranchSet().getLast().getNextExpr();
+           while (!(firstBlockEnd.isBranch() && firstBlockEnd.asBranch().isUnconditional())) {
+              firstBlockEnd = firstBlockEnd.getNextExpr();
+           }
+           firstBlockEnd = firstBlockEnd.getPrevExpr();
+           return inferType(firstBlockEnd);
+       } else if (insn instanceof LocalVariableConstIndexLoad) {
+           LocalVariableConstIndexLoad ld = (LocalVariableConstIndexLoad)insn;
+           LocalVariableInfo info = ld.getLocalVariableInfo();
+           return info.getVariableDescriptor();
+       } else if (insn instanceof I_IADD || insn instanceof I_IMUL) {
+           return "I";
+       } else if (insn instanceof I_FADD || insn instanceof I_D2F) {
+           return "F";
+       } else if (insn instanceof I_DDIV) {
+           return "D";
+       } else if (insn instanceof I_CHECKCAST) {
+           I_CHECKCAST cast = (I_CHECKCAST)insn;
+           return cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
+       } else if (insn instanceof I_GETFIELD) {
+           I_GETFIELD get = (I_GETFIELD)insn;
+           return get.getConstantPoolFieldEntry().getNameAndTypeEntry().getDescriptorUTF8Entry().getUTF8();
+       } else if (insn instanceof I_INVOKEVIRTUAL) {
+           I_INVOKEVIRTUAL call = (I_INVOKEVIRTUAL)insn;
+           MethodEntryInfo info = call.getConstantPoolMethodEntry();
+           String desc = info.getMethodSig();
+           return desc.substring(desc.lastIndexOf(")") + 1);
+       }
+
+       throw new RuntimeException("Unsupported type inference on " + insn.getClass().getName());
+   }
+
    public boolean writeInstruction(Instruction _instruction) throws CodeGenException {
       boolean writeCheck = false;
 
@@ -430,9 +614,29 @@ public abstract class BlockWriter{
          while (!(elseGoto.isBranch() && elseGoto.asBranch().isUnconditional())) {
             elseGoto = elseGoto.getNextExpr();
          }
-         writeBlock(blockStart, elseGoto);
+         if (BlockWriter.emitOcl) {
+             writeBlock(blockStart, elseGoto);
+         } else {
+             Instruction lastInsn = getLastInstructionInSequence(blockStart, elseGoto);
+             final String saveReturnType = KernelWriter.currentReturnType;
+             KernelWriter.currentReturnType = inferType(lastInsn);
+             write("([&] () -> " + KernelWriter.getTypenameForCurrentReturnType() + " {");
+             writeSequence(blockStart, elseGoto, "return ");
+             write("; })()");
+             KernelWriter.currentReturnType = saveReturnType;
+         }
          write(") : (");
-         writeBlock(elseGoto.getNextExpr(), null);
+         if (BlockWriter.emitOcl) {
+             writeBlock(elseGoto.getNextExpr(), null);
+         } else {
+             Instruction lastInsn = getLastInstructionInSequence(blockStart, elseGoto);
+             final String saveReturnType = KernelWriter.currentReturnType;
+             KernelWriter.currentReturnType = inferType(lastInsn);
+             write("([&] () -> " + KernelWriter.getTypenameForCurrentReturnType() + " {");
+             writeSequence(elseGoto.getNextExpr(), null, "return ");
+             write("; })()");
+             KernelWriter.currentReturnType = saveReturnType;
+         }
          write(")");
       } else
       /* if (_instruction instanceof CompositeIfElseInstruction) {

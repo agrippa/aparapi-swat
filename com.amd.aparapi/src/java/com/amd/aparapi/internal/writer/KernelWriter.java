@@ -112,8 +112,68 @@ public abstract class KernelWriter extends BlockWriter{
 
    private int countAllocs = 0;
 
-   private String currentReturnType = null;
+   public static String currentReturnType = null;
    private MethodModel currentMethodModel = null;
+
+   private static String getTypenameFor(String sig) {
+     if (sig.startsWith("scala/Tuple2")) {
+         int openParenIndex = sig.indexOf('(');
+         int closeParenIndex = sig.lastIndexOf(')');
+
+         int commaIndex = openParenIndex + 1;
+         int parenNesting = 0;
+         while (commaIndex < sig.length()) {
+             if (sig.charAt(commaIndex) == '(') {
+                 parenNesting++;
+             } else if (sig.charAt(commaIndex) == ')') {
+                 parenNesting--;
+             } else if (parenNesting == 0 && sig.charAt(commaIndex) == ',') {
+                 break;
+             }
+             commaIndex++;
+         }
+
+         String templateOne = sig.substring(openParenIndex + 1, commaIndex);
+         String templateTwo = sig.substring(commaIndex + 1, closeParenIndex);
+         if (templateOne.length() > 1) {
+             templateOne = getTypenameFor(templateOne);
+             templateOne = templateOne.substring(0, templateOne.length() - 1);
+         }
+         if (templateTwo.length() > 1) {
+             templateTwo = getTypenameFor(templateTwo);
+             templateTwo = templateTwo.substring(0, templateTwo.length() - 1);
+         }
+
+         return "scala_Tuple2_" + templateOne + "_" + templateTwo + "*";
+     } else if (sig.equals("I")) {
+         return "int";
+     } else if (sig.equals("F")) {
+         return "float";
+     } else if (sig.equals("D")) {
+         return "double";
+     } else if (sig.startsWith("[")) {
+         return getTypenameFor(sig.substring(1)) + "*";
+     } else {
+         // Assume user-defined object. This can be in two different formats:
+         // org/apache/spark/rdd/cl/tests/Point(F,F,F) or
+         // Lorg/apache/spark/rdd/cl/tests/Point;
+         if (sig.startsWith("L")) {
+             String typename = sig.substring(1);
+             typename = typename.substring(0, typename.length() - 1);
+             return typename.replace('/', '_') + "*";
+         } else {
+             if (sig.indexOf('(') != -1) {
+                 sig = sig.substring(0, sig.indexOf('('));
+             }
+             return sig.replace('/', '_') + "*";
+         }
+     }
+   }
+
+   public static String getTypenameForCurrentReturnType() {
+       System.err.println("currentReturnType = \"" + currentReturnType + "\"");
+       return getTypenameFor(currentReturnType);
+   }
 
    private Set<MethodModel> mayFailHeapAllocation = null;
 
@@ -234,18 +294,7 @@ public abstract class KernelWriter extends BlockWriter{
 
    @Override public String getAllocCheck() {
      assert(currentReturnType != null);
-     final String nullReturn;
-     if (currentReturnType.startsWith("L") ||
-             currentReturnType.startsWith("[")) {
-       nullReturn = "0x0";
-     } else if (currentReturnType.equals("I") ||
-             currentReturnType.equals("L") || currentReturnType.equals("F") ||
-             currentReturnType.equals("D")) {
-       nullReturn = "0";
-     } else {
-       throw new RuntimeException("Unsupported type descriptor " +
-               currentReturnType);
-     }
+     final String nullReturn = "(" + getTypenameForCurrentReturnType() + ")0x0";
 
      String checkStr = "if (*__swat_alloc_failed) { return (" + nullReturn + "); }";
      String indentedCheckStr = doIndent(checkStr);
@@ -316,94 +365,6 @@ public abstract class KernelWriter extends BlockWriter{
        write(allocVarName);
    }
 
-   private String inferType(ConstructorCall call) {
-     StringBuilder result = new StringBuilder();
-     I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
-     int nargs = invokeSpecial.getStackConsumeCount() - 1;
-     for (int a = 0; a < nargs; a++) {
-         Instruction arg = invokeSpecial.getArg(a);
-
-         final String s;
-         if (arg instanceof I_CHECKCAST) {
-             I_CHECKCAST cast = (I_CHECKCAST)arg;
-             s = cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
-         } else if (arg instanceof ConstructorCall) {
-             ConstructorCall constr = (ConstructorCall)arg;
-             s = inferType(constr);
-         } else if (arg instanceof I_INVOKESTATIC) {
-             I_INVOKESTATIC stat = (I_INVOKESTATIC)arg;
-             String name = stat.getConstantPoolMethodEntry().toString();
-             if (name.equals("scala/runtime/BoxesRunTime.boxToInteger(I)Ljava/lang/Integer;")) {
-                 s = "I";
-             } else if (name.equals("scala/runtime/BoxesRunTime.boxToFloat(F)Ljava/lang/Float;")) {
-                 s = "F";
-             } else if (name.equals("scala/runtime/BoxesRunTime.boxToDouble(D)Ljava/lang/Double;")) {
-                 s = "D";
-             } else {
-                 throw new RuntimeException("Unsupported: " + name);
-             }
-         } else if (arg instanceof I_I2F) {
-             s = "F";
-         } else if (arg instanceof I_FADD || arg instanceof I_FDIV ||
-                 arg instanceof I_FMUL || arg instanceof I_FSUB) {
-             s = "F";
-         } else if (arg instanceof I_DADD || arg instanceof I_DDIV ||
-                 arg instanceof I_DMUL || arg instanceof I_DSUB) {
-             s = "D";
-         } else if (arg instanceof I_IADD || arg instanceof I_IDIV ||
-                 arg instanceof I_IMUL || arg instanceof I_ISUB) {
-             s = "I";
-         } else if (arg instanceof I_FCONST_0 || arg instanceof I_FCONST_1 ||
-                 arg instanceof I_FCONST_2) {
-             s = "F";
-         } else if (arg instanceof I_LDC_W || arg instanceof I_LDC) {
-             String typeName = ((Constant)arg).getValue().getClass().getName();
-             if (typeName.equals("java.lang.Float")) {
-                 s = "F";
-             } else if (typeName.equals("java.lang.Integer")) {
-                 s = "I";
-             } else if (typeName.equals("java.lang.Double")) {
-                 s = "D";
-             } else {
-                 throw new RuntimeException(typeName);
-             }
-         } else if (arg instanceof I_INVOKEVIRTUAL) {
-             MethodEntryInfo info = ((I_INVOKEVIRTUAL)arg).getConstantPoolMethodEntry();
-             String desc = info.getMethodSig();
-             String returnType = desc.substring(desc.lastIndexOf(")") + 1);
-             s = returnType;
-         } else if (arg instanceof I_ILOAD_0 || arg instanceof I_ILOAD_1 ||
-                 arg instanceof I_ILOAD_2 || arg instanceof I_ILOAD_3 || arg instanceof I_ILOAD) {
-             s = "I";
-         } else if (arg instanceof I_DLOAD_0 || arg instanceof I_DLOAD_1 ||
-                 arg instanceof I_DLOAD_2 || arg instanceof I_DLOAD_3 || arg instanceof I_DLOAD) {
-             s = "D";
-         } else if (arg instanceof I_FLOAD_0 || arg instanceof I_FLOAD_1 ||
-                 arg instanceof I_FLOAD_2 || arg instanceof I_FLOAD_3 || arg instanceof I_FLOAD) {
-             s = "F";
-         } else if (arg instanceof I_ICONST_M1 || arg instanceof I_ICONST_0 ||
-                 arg instanceof I_ICONST_1 || arg instanceof I_ICONST_2 ||
-                 arg instanceof I_ICONST_3 || arg instanceof I_ICONST_4 ||
-                 arg instanceof I_ICONST_5) {
-             s = "I";
-         } else if (arg instanceof I_FCONST_0 || arg instanceof I_FCONST_1 ||
-                 arg instanceof I_FCONST_2) {
-             s = "F";
-         } else if (arg instanceof I_DCONST_0 || arg instanceof I_DCONST_1) {
-             s = "D";
-         } else {
-             throw new RuntimeException("Unable to do type inference on " + arg);
-         }
-
-         if (a != 0) result.append(",");
-         result.append(s);
-     }
-     String containerClass = invokeSpecial.getConstantPoolMethodEntry().getClassName();
-     if (containerClass.startsWith("scala/Tuple2")) {
-         containerClass = "scala/Tuple2";
-     }
-     return containerClass + "(" + result.toString() + ")";
-   }
 
    @Override public void writeConstructorCall(ConstructorCall call) throws CodeGenException {
      I_INVOKESPECIAL invokeSpecial = call.getInvokeSpecial();
@@ -412,7 +373,7 @@ public abstract class KernelWriter extends BlockWriter{
      final String constructorName = constructorEntry.getMethodName();
      final String constructorSignature = constructorEntry.getMethodSig();
 
-     String guess = inferType(call);
+     String guess = inferConstructorType(call);
 
      MethodModel m = entryPoint.getCallTarget(constructorEntry, true, guess);
      if (m == null) {
@@ -1412,7 +1373,19 @@ public abstract class KernelWriter extends BlockWriter{
 
          final String returnType = mm.getReturnType();
 
-         this.currentReturnType = returnType;
+         if (returnType.equals("V")) {
+             this.currentReturnType = "void";
+         } else {
+             Instruction last = getLastInstructionInSequence(mm.getExprHead(), null);
+             if (!(last instanceof Return)) {
+                 throw new RuntimeException("Unexpected last method instruction " + last.getClass().getName());
+             }
+             Return ret = (Return)last;
+             Instruction value = ret.getFirstChild();
+             this.currentReturnType = inferType(value);
+         }
+
+         // this.currentReturnType = returnType;
          this.currentMethodModel = mm;
 
          final String fullReturnType;
@@ -1795,7 +1768,12 @@ public abstract class KernelWriter extends BlockWriter{
       final StringBuilder openCLStringBuilder = new StringBuilder();
       final KernelWriter openCLWriter = new KernelWriter(multiInput) {
          private int writtenSinceLastNewLine = 0;
+         private int writtenSinceLastExpression = 0;
          private int mark = -1;
+
+         // @Override public void writeBeforeLastExpression(String _string) {
+         //     openCLStringBuilder.insert(openCLStringBuilder.length() - writtenSinceLastExpression, _string);
+         // }
 
          @Override public void writeBeforeCurrentLine(String _string) {
            char insertingAt = openCLStringBuilder.charAt(openCLStringBuilder.length() -
@@ -1807,6 +1785,10 @@ public abstract class KernelWriter extends BlockWriter{
            openCLStringBuilder.insert(openCLStringBuilder.length() -
                writtenSinceLastNewLine, _string + "\n");
          }
+
+         // @Override public void markNewExpression() {
+         //     writtenSinceLastExpression = 0;
+         // }
 
          @Override public void markCurrentPosition() {
              if (mark != -1) {
@@ -1835,6 +1817,7 @@ public abstract class KernelWriter extends BlockWriter{
             } else {
               writtenSinceLastNewLine += _string.length();
             }
+            writtenSinceLastExpression += _string.length();
             openCLStringBuilder.append(_string);
          }
       };
