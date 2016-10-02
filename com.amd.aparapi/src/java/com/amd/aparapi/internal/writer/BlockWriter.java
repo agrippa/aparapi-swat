@@ -585,7 +585,7 @@ public abstract class BlockWriter{
            return "I";
        } else if (insn instanceof I_FADD || insn instanceof I_D2F) {
            return "F";
-       } else if (insn instanceof I_DDIV) {
+       } else if (insn instanceof I_DDIV || insn instanceof I_DADD || insn instanceof I_DMUL) {
            return "D";
        } else if (insn instanceof I_CHECKCAST) {
            I_CHECKCAST cast = (I_CHECKCAST)insn;
