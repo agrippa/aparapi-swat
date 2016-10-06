@@ -151,6 +151,8 @@ public abstract class KernelWriter extends BlockWriter{
          return "float";
      } else if (sig.equals("D")) {
          return "double";
+     } else if (sig.equals("V")) {
+         return "void";
      } else if (sig.startsWith("[")) {
          return getTypenameFor(sig.substring(1)) + "*";
      } else {
@@ -294,9 +296,16 @@ public abstract class KernelWriter extends BlockWriter{
 
    @Override public String getAllocCheck() {
      assert(currentReturnType != null);
-     final String nullReturn = "(" + getTypenameForCurrentReturnType() + ")0x0";
 
-     String checkStr = "if (*__swat_alloc_failed) { return (" + nullReturn + "); }";
+     final String returnStmt;
+     if (currentReturnType.equals("V")) {
+         returnStmt = "return;";
+     } else {
+         final String nullReturn = "(" + getTypenameForCurrentReturnType() + ")0x0";
+         returnStmt = "return (" + nullReturn + ");";
+     }
+
+     String checkStr = "if (*__swat_alloc_failed) { " + returnStmt + " }";
      String indentedCheckStr = doIndent(checkStr);
 
      return indentedCheckStr;

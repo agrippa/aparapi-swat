@@ -195,7 +195,8 @@ public abstract class BlockWriter{
              final String saveReturnType = KernelWriter.currentReturnType;
              KernelWriter.currentReturnType = inferType(lastInsn);
              write("([&] () -> " + KernelWriter.getTypenameForCurrentReturnType() + " {");
-             writeSequence(blockStart, elseGoto, "return ");
+             final String insertAtEnd = (KernelWriter.currentReturnType.equals("V") ? "" : "return ");
+             writeSequence(blockStart, elseGoto, insertAtEnd);
              writeln("; })()");
              KernelWriter.currentReturnType = saveReturnType;
          }
@@ -208,7 +209,8 @@ public abstract class BlockWriter{
              final String saveReturnType = KernelWriter.currentReturnType;
              KernelWriter.currentReturnType = inferType(lastInsn);
              write("([&] () -> " + KernelWriter.getTypenameForCurrentReturnType() + " {");
-             writeSequence(elseGoto.getNextExpr(), null, "return ");
+             final String insertAtEnd = (KernelWriter.currentReturnType.equals("V") ? "" : "return ");
+             writeSequence(elseGoto.getNextExpr(), null, insertAtEnd);
              writeln("; })()");
              KernelWriter.currentReturnType = saveReturnType;
          }
@@ -587,6 +589,8 @@ public abstract class BlockWriter{
            return "F";
        } else if (insn instanceof I_DDIV || insn instanceof I_DADD || insn instanceof I_DMUL) {
            return "D";
+       } else if (insn instanceof I_DASTORE) {
+           return "V";
        } else if (insn instanceof I_CHECKCAST) {
            I_CHECKCAST cast = (I_CHECKCAST)insn;
            return cast.getConstantPoolClassEntry().getNameUTF8Entry().getUTF8();
@@ -621,7 +625,8 @@ public abstract class BlockWriter{
              final String saveReturnType = KernelWriter.currentReturnType;
              KernelWriter.currentReturnType = inferType(lastInsn);
              write("([&] () -> " + KernelWriter.getTypenameForCurrentReturnType() + " {");
-             writeSequence(blockStart, elseGoto, "return ");
+             final String insertAtEnd = (KernelWriter.currentReturnType.equals("V") ? "" : "return ");
+             writeSequence(blockStart, elseGoto, insertAtEnd);
              write("; })()");
              KernelWriter.currentReturnType = saveReturnType;
          }
@@ -633,7 +638,8 @@ public abstract class BlockWriter{
              final String saveReturnType = KernelWriter.currentReturnType;
              KernelWriter.currentReturnType = inferType(lastInsn);
              write("([&] () -> " + KernelWriter.getTypenameForCurrentReturnType() + " {");
-             writeSequence(elseGoto.getNextExpr(), null, "return ");
+             final String insertAtEnd = (KernelWriter.currentReturnType.equals("V") ? "" : "return ");
+             writeSequence(elseGoto.getNextExpr(), null, insertAtEnd);
              write("; })()");
              KernelWriter.currentReturnType = saveReturnType;
          }
