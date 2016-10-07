@@ -54,6 +54,11 @@ import java.util.*;
 
 public abstract class KernelWriter extends BlockWriter{
 
+   public final static int CUDA_STRUCT_ALIGN = 8;
+   public static int roundUpToAlignment(int size) {
+       return size + (CUDA_STRUCT_ALIGN - (size % CUDA_STRUCT_ALIGN));
+   }
+
    public final static String oclFunctionArgumentsPrefix = "__global void * " +
        "restrict __swat_heap, __global uint * restrict __swat_free_index, " +
        "int * restrict __swat_alloc_failed, const int __swat_heap_size";
@@ -873,7 +878,7 @@ public abstract class KernelWriter extends BlockWriter{
        if (BlockWriter.emitOcl) {
            write("struct __attribute__ ((packed)) " + mangledClassName + "_s{");
        } else {
-           write("struct " + mangledClassName + "_s{");
+           write("struct __align__(" + CUDA_STRUCT_ALIGN + ") " + mangledClassName + "_s{");
        }
        in();
        newLine();
@@ -1258,7 +1263,7 @@ public abstract class KernelWriter extends BlockWriter{
           newLine();
           {
             writeln("__global unsigned char *cheap = (__global unsigned char *)heap;");
-            writeln("uint rounded = nbytes + (8 - (nbytes % 8));");
+            writeln("uint rounded = nbytes + (256 - (nbytes % 256));");
             writeln("uint offset = atomic_add(free_index, rounded);");
             writeln("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
             write("else return (__global void *)(cheap + offset);");
@@ -1275,7 +1280,7 @@ public abstract class KernelWriter extends BlockWriter{
           newLine();
           {
             writeln("unsigned char *cheap = (unsigned char *)heap;");
-            writeln("unsigned rounded = nbytes + (8 - (nbytes % 8));");
+            writeln("unsigned rounded = nbytes + (256 - (nbytes % 256));");
             writeln("unsigned offset = atomicAdd((unsigned int *)free_index, rounded);");
             writeln("if (offset + nbytes > heap_size) { *alloc_failed = 1; return 0x0; }");
             write("else return (void *)(cheap + offset);");
@@ -1312,7 +1317,7 @@ public abstract class KernelWriter extends BlockWriter{
             if (BlockWriter.emitOcl) {
                 writeln("typedef struct __attribute__ ((packed)) " + mangled + "_s " + mangled + ";");
             } else {
-                writeln("typedef struct " + mangled + "_s " + mangled + ";");
+                writeln("typedef struct __align__(" + CUDA_STRUCT_ALIGN + ") " + mangled + "_s " + mangled + ";");
             }
             emitted.add(mangled);
         }

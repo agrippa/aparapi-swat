@@ -201,7 +201,7 @@ public class Tuple2ClassModel extends HardCodedClassModel {
                    entryPoint.getSizeOf(fieldType));
            totalSize += fSize;
        }
-       return totalSize;
+       return BlockWriter.emitOcl ? totalSize : KernelWriter.roundUpToAlignment(totalSize);
    }
 
    @Override

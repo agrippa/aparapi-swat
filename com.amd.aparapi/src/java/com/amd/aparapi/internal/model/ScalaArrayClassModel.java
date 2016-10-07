@@ -143,7 +143,11 @@ public class ScalaArrayClassModel extends HardCodedClassModel {
         */
        final int pointerSize = Integer.parseInt(entryPoint.getConfig().get(
                    Entrypoint.clDevicePointerSize));
-       return (pointerSize + 4 + 4);
+       if (BlockWriter.emitOcl) {
+           return (pointerSize + 4 + 4);
+       } else {
+           return KernelWriter.roundUpToAlignment(pointerSize + 4 + 4);
+       }
    }
 
    @Override

@@ -155,7 +155,11 @@ public class SparseVectorClassModel extends HardCodedClassModel {
         */
        final int pointerSize = Integer.parseInt(entryPoint.getConfig().get(
                    Entrypoint.clDevicePointerSize));
-       return (pointerSize + pointerSize + 4 + 4);
+       if (BlockWriter.emitOcl) {
+           return (pointerSize + pointerSize + 4 + 4);
+       } else {
+           return KernelWriter.roundUpToAlignment(pointerSize + pointerSize + 4 + 4);
+       }
    }
 
    @Override
