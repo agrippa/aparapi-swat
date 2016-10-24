@@ -179,7 +179,11 @@ public abstract class KernelWriter extends BlockWriter{
 
    public static String getTypenameForCurrentReturnType() {
        System.err.println("currentReturnType = \"" + currentReturnType + "\"");
-       return getTypenameFor(currentReturnType);
+       String converted = getTypenameFor(currentReturnType);
+       if (converted.endsWith("*") && BlockWriter.emitOcl) {
+           converted = "__global " + converted;
+       }
+       return converted;
    }
 
    private Set<MethodModel> mayFailHeapAllocation = null;
